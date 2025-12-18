@@ -104,19 +104,28 @@ def get_tailscale_ips():
         peers = []
         for info in data.get("Peer", {}).values():
             if info.get("Online", False):
+                dns_name = info.get("DNSName", "").rstrip(".")
                 ips = info.get("TailscaleIPs", [])
                 if ips and ips[0] not in self_ips:
-                    peers.append(ips[0])
+                    peer_addr = dns_name if dns_name else ips[0]
+                    peers.append(peer_addr)
+                    print(f"[DEBUG] Added peer: {peer_addr} (DNS: {dns_name}, IP: {ips[0]})")
+        print(f"[DEBUG] Total peers found: {len(peers)}")
         return peers
-    except:
+    except Exception as e:
+        print(f"[ERROR] get_tailscale_ips: {e}")
         return []
 
 async def send_file_to_ip(ip: str, filepath: str):
     filename = os.path.basename(filepath)
-    print(f"[>] Enviando '{filename}' a {ip} ...")
+    print(f"\n[>] Enviando '{filename}' a {ip}:9999")
+    print(f"    IP resolved: {ip}")
+    
     # Try QUIC first (original behavior)
     try:
+        print(f"[*] Intentando QUIC a {ip}:9999...")
         async with connect(ip, 9999, configuration=config_client) as client:
+            print(f"[✓] Conexión QUIC exitosa a {ip}")
             stream_id = client._quic.get_next_available_stream_id()
             header = filename.encode(errors="ignore") + b"\0"
             client._quic.send_stream_data(stream_id, header, end_stream=False)
@@ -150,12 +159,14 @@ async def send_file_to_ip(ip: str, filepath: str):
             print(f"[+] COMPLETADO! '{filename}' enviado 100 % a {ip} (QUIC)")
             return
     except Exception as e:
-        print(f"[!] Error enviando '{filename}' por QUIC a {ip}: {e}")
+        print(f"[!] Error QUIC a {ip}: {type(e).__name__}: {e}")
         print("[i] Intentando fallback TCP...")
 
     # TCP fallback (exact same payload format: filename\\0 + bytes)
     try:
+        print(f"[*] Intentando TCP a {ip}:9999...")
         with socket.create_connection((ip, 9999), timeout=30) as s:
+            print(f"[✓] Conexión TCP exitosa a {ip}")
             # tune socket for better throughput: increase send buffer and disable Nagle
             try:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 256 * 1024)
@@ -183,7 +194,7 @@ async def send_file_to_ip(ip: str, filepath: str):
             # close socket -> server treats end-of-stream as completed
         print(f"[+] COMPLETADO! '{filename}' enviado 100 % a {ip} (TCP fallback)")
     except Exception as tcp_e:
-        print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
+        print(f"[!] Error TCP a {ip}: {type(tcp_e).__name__}: {tcp_e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():

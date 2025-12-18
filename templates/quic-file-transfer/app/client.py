@@ -35,9 +35,12 @@ class FileServerProtocol(QuicConnectionProtocol):
                     self._names[stream_id] = filename
                     self._received[stream_id] = 0
 
-                    download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
+                    # Usar /app/uploads en el contenedor (mapeado en docker-compose)
+                    # O ~/Downloads en local
+                    download_dir = "/app/uploads" if os.path.exists("/app") else os.path.expanduser("~/Downloads")
                     os.makedirs(download_dir, exist_ok=True)
                     full_path = os.path.join(download_dir, filename)
+                    print(f"[DEBUG] Guardando en: {full_path}")
 
                     f = open(full_path, "wb")
                     if first_chunk:
@@ -64,11 +67,11 @@ class FileServerProtocol(QuicConnectionProtocol):
                     os.fsync(f.fileno())
                     f.close()
                     filename = self._names.pop(stream_id)
-                    download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
+                    download_dir = "/app/uploads" if os.path.exists("/app") else os.path.expanduser("~/Downloads")
                     full_path = os.path.join(download_dir, filename)
                     os.chmod(full_path, 0o644)
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
-                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB)")
+                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB) en {full_path}")
 
 async def run_quic_server():
     config = QuicConfiguration(
