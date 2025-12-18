@@ -26,29 +26,20 @@ else
   echo "tailscale CLI not found on host — container will attempt to run tailscaled if possible."
 fi
 
-# Try docker compose (modern) first, fall back to docker-compose (legacy)
-if command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD="docker-compose"
-elif docker compose version >/dev/null 2>&1; then
+# Try docker compose (modern/bundled) first, fall back to docker-compose (legacy)
+# Modern docker compose has fewer bugs with new Docker versions
+if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  echo "⚠️  Using legacy docker-compose. Consider upgrading to modern 'docker compose' (bundled with Docker)"
+  COMPOSE_CMD="docker-compose"
 else
-  echo "Error: docker-compose or docker compose not found"
+  echo "Error: neither 'docker compose' nor 'docker-compose' found"
   echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
   exit 1
 fi
 
 echo "Using: $COMPOSE_CMD"
-
-# Try docker compose (modern) first, fall back to docker-compose (legacy)
-if command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD="docker-compose"
-elif docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-else
-  echo "Error: docker-compose or docker compose not found"
-  echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
-  exit 1
-fi
 
 echo "Using: $COMPOSE_CMD"
 
