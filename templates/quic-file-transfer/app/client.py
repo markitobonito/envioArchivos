@@ -8,6 +8,28 @@ from aioquic.asyncio import connect, serve, QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import StreamDataReceived
 import socket
+import platform
+
+def get_downloads_folder():
+    """
+    Detecta la carpeta de descargas correcta según el SO e idioma.
+    - Windows/macOS en español: ~/Descargas
+    - Otros: ~/Downloads
+    Crea la carpeta si no existe.
+    """
+    home = os.path.expanduser("~")
+    
+    # Intentar Descargas primero (español)
+    descargas_path = os.path.join(home, "Descargas")
+    if os.path.exists(descargas_path) and os.path.isdir(descargas_path):
+        return descargas_path
+    
+    # Fallback a Downloads (inglés)
+    downloads_path = os.path.join(home, "Downloads")
+    os.makedirs(downloads_path, exist_ok=True)
+    return downloads_path
+
+# ...existing code...
 
 class FileServerProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs):
@@ -35,10 +57,8 @@ class FileServerProtocol(QuicConnectionProtocol):
                     self._names[stream_id] = filename
                     self._received[stream_id] = 0
 
-                    # Usar /app/uploads en el contenedor (mapeado en docker-compose)
-                    # O ~/Downloads en local
-                    download_dir = "/app/uploads" if os.path.exists("/app") else os.path.expanduser("~/Downloads")
-                    os.makedirs(download_dir, exist_ok=True)
+                    # Usar la carpeta de descargas correcta (Descargas o Downloads según idioma)
+                    download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
                     print(f"[DEBUG] Guardando en: {full_path}")
 
@@ -67,7 +87,7 @@ class FileServerProtocol(QuicConnectionProtocol):
                     os.fsync(f.fileno())
                     f.close()
                     filename = self._names.pop(stream_id)
-                    download_dir = "/app/uploads" if os.path.exists("/app") else os.path.expanduser("~/Downloads")
+                    download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
                     os.chmod(full_path, 0o644)
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
@@ -275,6 +295,199 @@ def index():
         flash(f"Archivo '{file.filename}' enviándose a {len(ips)} dispositivo(s).", "success")
         return redirect("/")
     return render_template("index.html")
+
+# ...existing code...
+
+@app.route("/video/<filename>")
+def stream_video(filename):
+    """
+    Reproducir video mientras se descarga (HTTP Range Requests).
+    Soporta: MP4, WebM, MKV, AVI, MOV, FLV, etc.
+    """
+    video_extensions = {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m3u8', '.ts', '.m4v'}
+    
+    if not any(filename.lower().endswith(ext) for ext in video_extensions):
+        return "Not a video file", 400
+    
+    # Buscar en Descargas
+    downloads_dir = get_downloads_folder()
+    filepath = os.path.join(downloads_dir, filename)
+    
+    # Validar que el archivo existe y está en la carpeta de descargas
+    if not os.path.exists(filepath) or not os.path.isfile(filepath):
+        return "Video not found", 404
+    
+    # Obtener tamaño del archivo
+    file_size = os.path.getsize(filepath)
+    
+    # Soportar HTTP Range requests para streaming
+    range_header = request.headers.get('Range', None)
+    
+    if range_header:
+        try:
+            ranges = range_header.replace('bytes=', '').split('-')
+            start = int(ranges[0]) if ranges[0] else 0
+            end = int(ranges[1]) if ranges[1] else file_size - 1
+            
+            if start > end or start >= file_size:
+                return "Invalid Range", 416
+            
+            def generate_video():
+                with open(filepath, 'rb') as f:
+                    f.seek(start)
+                    bytes_to_read = end - start + 1
+                    while bytes_to_read > 0:
+                        chunk_size = min(65536, bytes_to_read)
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        yield chunk
+                        bytes_to_read -= len(chunk)
+            
+            response = app.response_class(
+                generate_video(),
+                status=206,
+                mimetype='video/mp4'
+            )
+            response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+            response.headers['Content-Length'] = end - start + 1
+            response.headers['Accept-Ranges'] = 'bytes'
+            return response
+        except (ValueError, IndexError):
+            pass
+    
+    def generate_full_video():
+        with open(filepath, 'rb') as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+    
+    response = app.response_class(
+        generate_full_video(),
+        status=200,
+        mimetype='video/mp4'
+    )
+    response.headers['Accept-Ranges'] = 'bytes'
+    response.headers['Content-Length'] = file_size
+    return response
+
+@app.route("/watch/<filename>")
+def watch_video(filename):
+    """Página HTML para ver video en pantalla completa mientras se descarga."""
+    video_extensions = {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m3u8', '.ts', '.m4v'}
+    
+    if not any(filename.lower().endswith(ext) for ext in video_extensions):
+        return "Not a video file", 400
+    
+    downloads_dir = get_downloads_folder()
+    filepath = os.path.join(downloads_dir, filename)
+    
+    if not os.path.exists(filepath):
+        return "Video not found", 404
+    
+    file_size = os.path.getsize(filepath)
+    file_size_mb = file_size / (1024 * 1024)
+    
+    mime_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.flv': 'video/x-flv',
+        '.m4v': 'video/x-m4v'
+    }
+    
+    ext = os.path.splitext(filename)[1].lower()
+    mime_type = mime_types.get(ext, 'video/mp4')
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reproduciendo: {filename}</title>
+        <style>
+            * {{ margin: 0; padding: 0; }}
+            body {{ background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; }}
+            .video-container {{ flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }}
+            video {{ width: 100%; height: 100%; max-width: 100%; max-height: 100%; }}
+            .info {{ position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #fff; padding: 15px 20px; border-radius: 8px; font-size: 14px; }}
+            .info p {{ margin: 5px 0; }}
+            .progress {{ width: 200px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; margin-top: 10px; overflow: hidden; }}
+            .progress-bar {{ height: 100%; background: #4CAF50; width: 0%; transition: width 0.3s; }}
+            .close-btn {{ position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); color: #fff; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 10; }}
+            .close-btn:hover {{ background: rgba(0,0,0,0.9); }}
+        </style>
+    </head>
+    <body>
+        <div class="video-container">
+            <video id="video" controls autoplay>
+                <source src="/video/{filename}" type="{mime_type}">
+                Tu navegador no soporta reproducción de video.
+            </video>
+            <button class="close-btn" onclick="window.close()">Cerrar</button>
+            <div class="info">
+                <p><strong>📹 {filename}</strong></p>
+                <p>Tamaño: {file_size_mb:.1f} MB</p>
+                <p>Descargado: <span id="downloaded">0</span> MB</p>
+                <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+            </div>
+        </div>
+        <script>
+            const video = document.getElementById('video');
+            const progressBar = document.getElementById('progress-bar');
+            const downloadedSpan = document.getElementById('downloaded');
+            const totalSize = {file_size};
+            
+            video.addEventListener('progress', () => {{
+                if (video.buffered.length > 0) {{
+                    const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                    const percentLoaded = (bufferedEnd / video.duration) * 100;
+                    const mbLoaded = (bufferedEnd / video.duration) * (totalSize / (1024 * 1024));
+                    progressBar.style.width = percentLoaded + '%';
+                    downloadedSpan.textContent = mbLoaded.toFixed(1);
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    return html
+
+@app.route("/videos")
+def videos_page():
+    """Página para ver videos recibidos."""
+    return render_template("videos.html")
+
+@app.route("/api/videos")
+def api_videos():
+    """API JSON para listar videos en descargas."""
+    video_extensions = {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m3u8', '.ts', '.m4v'}
+    
+    downloads_dir = get_downloads_folder()
+    videos = []
+    
+    try:
+        if os.path.exists(downloads_dir):
+            for filename in os.listdir(downloads_dir):
+                if any(filename.lower().endswith(ext) for ext in video_extensions):
+                    filepath = os.path.join(downloads_dir, filename)
+                    if os.path.isfile(filepath):
+                        size = os.path.getsize(filepath)
+                        size_mb = size / (1024 * 1024)
+                        videos.append({
+                            "name": filename,
+                            "size": f"{size_mb:.1f} MB",
+                            "path": filepath
+                        })
+    except Exception as e:
+        print(f"Error listing videos: {e}")
+    
+    return json.dumps(videos)
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000)

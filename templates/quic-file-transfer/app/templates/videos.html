@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Ver Videos - Multicast File Transfer</title>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <style>
+       body {
+           font-family: "Inter", sans-serif;
+       }
+   </style>
+</head>
+<body class="bg-gradient-to-br from-blue-500 to-purple-600 min-h-screen p-8">
+   <div class="max-w-6xl mx-auto">
+       <div class="mb-8">
+           <h1 class="text-4xl font-extrabold text-white mb-2">
+               🎬 Videos Recibidos
+           </h1>
+           <p class="text-blue-100">
+               Reproduce tus videos mientras se descargan en tiempo real vía QUIC streaming
+           </p>
+       </div>
+
+       <a href="/" class="inline-block mb-6 px-4 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition">
+           ← Volver al Inicio
+       </a>
+
+       <div id="videos-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+           <div class="bg-white rounded-lg p-6 text-center text-gray-500">
+               Cargando videos...
+           </div>
+       </div>
+   </div>
+
+   <script>
+       const videoExtensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v'];
+       
+       async function loadVideos() {
+           try {
+               const response = await fetch('/api/videos');
+               const videos = await response.json();
+               
+               const grid = document.getElementById('videos-grid');
+               
+               if (videos.length === 0) {
+                   grid.innerHTML = `
+                       <div class="col-span-full bg-white rounded-lg p-12 text-center text-gray-500">
+                           <p class="text-lg">No hay videos en tu carpeta de descargas</p>
+                           <p class="text-sm mt-2">Los videos recibidos aparecerán aquí</p>
+                       </div>
+                   `;
+                   return;
+               }
+               
+               grid.innerHTML = videos.map(video => `
+                   <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition">
+                       <div class="bg-gray-900 h-40 flex items-center justify-center">
+                           <svg class="w-16 h-16 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                           </svg>
+                       </div>
+                       <div class="p-4">
+                           <h3 class="font-semibold text-gray-900 truncate">${video.name}</h3>
+                           <p class="text-sm text-gray-600 mt-1">${video.size}</p>
+                           <div class="mt-4 flex gap-2">
+                               <a href="/watch/${video.name}" target="_blank" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-center font-medium hover:bg-blue-700 transition">
+                                   ▶ Reproducir
+                               </a>
+                               <a href="/video/${video.name}" download class="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg text-center font-medium hover:bg-gray-700 transition">
+                                   ⬇ Descargar
+                               </a>
+                           </div>
+                       </div>
+                   </div>
+               `).join('');
+           } catch (error) {
+               console.error('Error loading videos:', error);
+               document.getElementById('videos-grid').innerHTML = `
+                   <div class="col-span-full bg-white rounded-lg p-12 text-center text-red-500">
+                       <p>Error al cargar los videos</p>
+                   </div>
+               `;
+           }
+       }
+
+       // Cargar videos cada 3 segundos para detectar nuevos
+       loadVideos();
+       setInterval(loadVideos, 3000);
+   </script>
+</body>
+</html>
