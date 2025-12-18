@@ -1,10 +1,36 @@
-# Ignore local env files with secrets
-/templates/quic-file-transfer/.env
+# Environment variables with credentials (NEVER commit these)
+.env
+*.env.local
+templates/quic-file-transfer/.env
+
+# Docker volumes / uploads
+templates/quic-file-transfer/app/uploads/*
+!templates/quic-file-transfer/app/uploads/.gitkeep
+
+# Tailscale status and logs (may contain sensitive info)
+templates/quic-file-transfer/app/tailscale_status.json
+templates/quic-file-transfer/app/tailscale_status.err
+templates/quic-file-transfer/app/tailscale.err.txt
+templates/quic-file-transfer/app/tailscale.up.err.txt
+templates/quic-file-transfer/app/tailscaled.log
 
 # Python cache
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
 
 # Editor settings
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

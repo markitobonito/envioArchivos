@@ -6,7 +6,6 @@ set -euo pipefail
 # It exports TAILSCALE_* env vars for docker-compose and starts the service.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/templates/quic-file-transfer"
 
 # Defaults (you can edit these or set env in your shell before running)
 : "${TAILSCALE_AUTHKEY:=tskey-auth-ktsHxZY1qZ11CNTRL-XSjjc4JNpEL9jnuB4nWGFLSV3ouK6xrR}"
@@ -27,10 +26,36 @@ else
   echo "tailscale CLI not found on host — container will attempt to run tailscaled if possible."
 fi
 
-docker-compose up --build --force-recreate -d
+# Try docker compose (modern) first, fall back to docker-compose (legacy)
+if command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD="docker-compose"
+elif docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD="docker compose"
+else
+  echo "Error: docker-compose or docker compose not found"
+  echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
+  exit 1
+fi
+
+echo "Using: $COMPOSE_CMD"
+
+# Try docker compose (modern) first, fall back to docker-compose (legacy)
+if command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD="docker-compose"
+elif docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD="docker compose"
+else
+  echo "Error: docker-compose or docker compose not found"
+  echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
+  exit 1
+fi
+
+echo "Using: $COMPOSE_CMD"
+
+$COMPOSE_CMD -f templates/quic-file-transfer/docker-compose.yml --env-file templates/quic-file-transfer/.env up --build --force-recreate -d
 
 if [ $? -ne 0 ]; then
-  echo "docker-compose failed"
+  echo "$COMPOSE_CMD failed"
   exit 1
 fi
 
@@ -44,4 +69,4 @@ else
   echo "Open http://localhost:5000 in your browser"
 fi
 
-echo "Done. To follow logs: docker-compose logs -f"
+echo "Done. To follow logs: $COMPOSE_CMD -f templates/quic-file-transfer/docker-compose.yml logs -f"
