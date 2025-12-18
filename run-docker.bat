@@ -48,6 +48,20 @@ if exist "templates\quic-file-transfer\.env" (
 	set FLASK_ENV=production
 )
 
+REM Detect Downloads folder path (Windows systems)
+REM First try common localized folders, then fallback to default
+if exist "%USERPROFILE%\Descargas" (
+	set DOWNLOADS_PATH=%USERPROFILE%\Descargas
+	echo Detected Spanish Downloads folder: !DOWNLOADS_PATH!
+) else if exist "%USERPROFILE%\Downloads" (
+	set DOWNLOADS_PATH=%USERPROFILE%\Downloads
+	echo Using English Downloads folder: !DOWNLOADS_PATH!
+) else (
+	set DOWNLOADS_PATH=%USERPROFILE%\Downloads
+	mkdir "!DOWNLOADS_PATH!" 2>nul
+	echo Created Downloads folder: !DOWNLOADS_PATH!
+)
+
 REM Attempt to generate tailscale_status.json from the host if tailscale CLI is available
 where tailscale >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
@@ -66,7 +80,7 @@ echo.
 echo Building and starting containers with %COMPOSE_CMD% (this may take a few minutes)...
 echo.
 
-%COMPOSE_CMD% -f templates\quic-file-transfer\docker-compose.yml --env-file templates\quic-file-transfer\.env up --build --force-recreate -d
+%COMPOSE_CMD% -f templates\quic-file-transfer\docker-compose.yml --env-file templates\quic-file-transfer\.env -e DOWNLOADS_PATH=%DOWNLOADS_PATH% up --build --force-recreate -d
 
 if %ERRORLEVEL% NEQ 0 (
 	echo Error: %COMPOSE_CMD% failed with exit code %ERRORLEVEL%

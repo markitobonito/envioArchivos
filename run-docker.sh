@@ -7,6 +7,29 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detectar la carpeta de descargas correcta (Descargas o Downloads según idioma)
+# Primero intentar Descargas (español)
+if [ -d "$HOME/Descargas" ]; then
+    export DOWNLOADS_PATH="$HOME/Descargas"
+    echo "✓ Carpeta de descargas detectada: $DOWNLOADS_PATH"
+# Luego intentar Downloads (inglés)
+elif [ -d "$HOME/Downloads" ]; then
+    export DOWNLOADS_PATH="$HOME/Downloads"
+    echo "✓ Usando carpeta de descargas: $DOWNLOADS_PATH"
+# Si no existe ninguna, crear Downloads por defecto
+else
+    export DOWNLOADS_PATH="$HOME/Downloads"
+    mkdir -p "$DOWNLOADS_PATH"
+    echo "✓ Carpeta de descargas creada: $DOWNLOADS_PATH"
+fi
+
+# Validar que la ruta sea válida
+if [ -z "$DOWNLOADS_PATH" ] || [ ! -d "$DOWNLOADS_PATH" ]; then
+    echo "❌ Error: No se pudo establecer DOWNLOADS_PATH"
+    echo "HOME=$HOME"
+    exit 1
+fi
+
 # Defaults (you can edit these or set env in your shell before running)
 : "${TAILSCALE_AUTHKEY:=tskey-auth-ktsHxZY1qZ11CNTRL-XSjjc4JNpEL9jnuB4nWGFLSV3ouK6xrR}"
 : "${TAILSCALE_API_KEY:=tskey-api-kHbb2N391v11CNTRL-zshXmfRoGn1G8s3YSs32o1r4gzopSSHC}"
@@ -41,13 +64,21 @@ fi
 
 echo "Using: $COMPOSE_CMD"
 
-echo "Using: $COMPOSE_CMD"
+export DOWNLOADS_PATH  # Asegurar que la variable se exporte para docker-compose
 
 $COMPOSE_CMD -f templates/quic-file-transfer/docker-compose.yml --env-file templates/quic-file-transfer/.env up --build --force-recreate -d
 
 if [ $? -ne 0 ]; then
   echo "$COMPOSE_CMD failed"
   exit 1
+fi
+
+echo "✓ Containers started successfully"
+echo "Opening http://localhost:5000 in browser..."
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open http://localhost:5000 &
+elif command -v open >/dev/null 2>&1; then
+  open http://localhost:5000 &
 fi
 
 sleep 3
