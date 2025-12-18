@@ -412,29 +412,38 @@ def watch_video(filename):
         <title>Reproduciendo: {filename}</title>
         <style>
             * {{ margin: 0; padding: 0; }}
-            body {{ background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; }}
-            .video-container {{ flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }}
-            video {{ width: 100%; height: 100%; max-width: 100%; max-height: 100%; }}
-            .info {{ position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #fff; padding: 15px 20px; border-radius: 8px; font-size: 14px; }}
+            html, body {{ width: 100%; height: 100%; }}
+            body {{ background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }}
+            .video-container {{ flex: 1; display: flex; align-items: center; justify-content: center; position: relative; width: 100%; height: 100%; }}
+            video {{ width: 100vw; height: 100vh; object-fit: contain; }}
+            video:fullscreen {{ width: 100vw; height: 100vh; }}
+            .info {{ position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #fff; padding: 15px 20px; border-radius: 8px; font-size: 14px; z-index: 5; }}
             .info p {{ margin: 5px 0; }}
             .progress {{ width: 200px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; margin-top: 10px; overflow: hidden; }}
             .progress-bar {{ height: 100%; background: #4CAF50; width: 0%; transition: width 0.3s; }}
             .close-btn {{ position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); color: #fff; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 10; }}
             .close-btn:hover {{ background: rgba(0,0,0,0.9); }}
+            .fullscreen-prompt {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: #fff; padding: 30px; border-radius: 10px; text-align: center; z-index: 20; display: none; }}
+            .fullscreen-prompt p {{ margin: 10px 0; font-size: 16px; }}
         </style>
     </head>
     <body>
-        <div class="video-container">
-            <video id="video" controls autoplay>
+        <div class="video-container" id="video-container">
+            <video id="video" controls autoplay playsinline>
                 <source src="/video/{filename}" type="{mime_type}">
                 Tu navegador no soporta reproducción de video.
             </video>
-            <button class="close-btn" onclick="window.close()">Cerrar</button>
+            <button class="close-btn" onclick="window.close()">Cerrar (ESC)</button>
             <div class="info">
                 <p><strong>📹 {filename}</strong></p>
                 <p>Tamaño: {file_size_mb:.1f} MB</p>
                 <p>Descargado: <span id="downloaded">0</span> MB</p>
                 <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+                <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">Presiona F para pantalla completa</p>
+            </div>
+            <div class="fullscreen-prompt" id="fullscreen-prompt">
+                <p>Presiona <strong>F</strong> para pantalla completa</p>
+                <p style="font-size: 12px; margin-top: 20px;">O haz click en el botón de pantalla completa del reproductor</p>
             </div>
         </div>
         <script>
@@ -442,6 +451,47 @@ def watch_video(filename):
             const progressBar = document.getElementById('progress-bar');
             const downloadedSpan = document.getElementById('downloaded');
             const totalSize = {file_size};
+            
+            // Auto-intentar fullscreen
+            function tryFullscreen() {{
+                const elem = document.documentElement;
+                const rfs = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.mozRequestFullScreen || elem.msRequestFullscreen;
+                if (rfs) {{
+                    rfs.call(elem).catch(err => {{
+                        console.log('Fullscreen request failed:', err.message);
+                    }});
+                }}
+            }}
+            
+            // Cuando el video empieza a reproducirse, intentar fullscreen
+            video.addEventListener('play', () => {{
+                // Esperar un poco para que el navegador esté listo
+                setTimeout(tryFullscreen, 500);
+            }}, {{ once: true }});
+            
+            // Atajo de teclado: F para fullscreen
+            document.addEventListener('keydown', (e) => {{
+                if (e.key.toLowerCase() === 'f') {{
+                    if (video.requestFullscreen) {{
+                        video.requestFullscreen().catch(err => console.log(err));
+                    }} else if (video.webkitRequestFullscreen) {{
+                        video.webkitRequestFullscreen();
+                    }}
+                }}
+                if (e.key === 'Escape') {{
+                    window.close();
+                }}
+            }});
+            
+            // Mostrar prompt después de 2 segundos si no está en fullscreen
+            setTimeout(() => {{
+                if (!document.fullscreenElement && !document.webkitFullscreenElement) {{
+                    document.getElementById('fullscreen-prompt').style.display = 'block';
+                    setTimeout(() => {{
+                        document.getElementById('fullscreen-prompt').style.display = 'none';
+                    }}, 4000);
+                }}
+            }}, 2000);
             
             video.addEventListener('progress', () => {{
                 if (video.buffered.length > 0) {{
@@ -473,16 +523,18 @@ def api_videos():
     
     try:
         if os.path.exists(downloads_dir):
-            for filename in os.listdir(downloads_dir):
+            for filename in sorted(os.listdir(downloads_dir), key=lambda x: os.path.getmtime(os.path.join(downloads_dir, x)), reverse=True):
                 if any(filename.lower().endswith(ext) for ext in video_extensions):
                     filepath = os.path.join(downloads_dir, filename)
                     if os.path.isfile(filepath):
                         size = os.path.getsize(filepath)
                         size_mb = size / (1024 * 1024)
+                        mtime = os.path.getmtime(filepath)
                         videos.append({
                             "name": filename,
                             "size": f"{size_mb:.1f} MB",
-                            "path": filepath
+                            "path": filepath,
+                            "mtime": mtime
                         })
     except Exception as e:
         print(f"Error listing videos: {e}")

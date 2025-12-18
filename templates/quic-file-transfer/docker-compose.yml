@@ -12,7 +12,7 @@ services:
       - ./certs:/certs
       - ./certs:/app/certs
       - ./app/uploads:/app/uploads  # Mapear uploads para accesibilidad en host
-      - ${HOME}/Downloads:/root/Downloads  # Mapear Downloads del usuario al contenedor
+      - ${DOWNLOADS_PATH}:/root/Downloads  # Mapear Descargas/Downloads del usuario (detectado dinámicamente)
       # mount host's tailscale state so the container can query the host daemon
       - /var/run/tailscale:/var/run/tailscale:ro
       - /var/lib/tailscale:/var/lib/tailscale:ro
