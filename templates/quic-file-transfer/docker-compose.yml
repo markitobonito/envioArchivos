@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5000:5000"  # Flask web server
-      - "9999:9999"  # QUIC server
+      - "9999:9999/udp"  # QUIC server (UDP)
     volumes:
       - ./app:/app
       - ./certs:/certs
