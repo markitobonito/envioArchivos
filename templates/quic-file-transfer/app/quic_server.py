@@ -1,10 +1,10 @@
-from aioquic.asyncio import serve
+from aioquic.asyncio import serve, QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import StreamDataReceived
 import os
 import asyncio
 
-class FileServerProtocol:
+class FileServerProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._files = {}
