@@ -1,0 +1,10 @@
+# Ignore local env files with secrets
+/templates/quic-file-transfer/.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor settings
+.vscode/
+.idea/

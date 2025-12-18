@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Multicast File Sender</title>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <style>
+       body {
+           font-family: "Inter", sans-serif;
+       }
+   </style>
+</head>
+<body class="bg-gradient-to-br from-blue-500 to-purple-600 min-h-screen flex items-center justify-center p-4">
+   <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+       <h1 class="text-4xl font-extrabold text-center text-gray-900 mb-8">
+           <span class="block">🚀 Multicast File Sender</span>
+       </h1>
+
+       {% with messages = get_flashed_messages() %}
+           {% if messages %}
+               <ul class="mb-6 space-y-2">
+                   {% for message in messages %}
+                       <li class="p-3 rounded-lg text-sm {% if 'éxito' in message|lower or 'sent successfully' in message|lower %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %} flex items-center">
+                           <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                               {% if 'éxito' in message|lower or 'sent successfully' in message|lower %}
+                               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                               {% else %}
+                               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                               {% endif %}
+                           </svg>
+                           {{ message }}
+                       </li>
+                   {% endfor %}
+               </ul>
+           {% endif %}
+       {% endwith %}
+
+       <form method="post" enctype="multipart/form-data" class="space-y-6">
+           <div>
+               <label for="file" class="block text-sm font-medium text-gray-700 mb-2">
+                   Selecciona un archivo para enviar:
+               </label>
+               <input type="file" name="file" id="file" class="block w-full text-sm text-gray-900
+                   border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                   focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500
+                   file:mr-4 file:py-2 file:px-4
+                   file:rounded-full file:border-0
+                   file:text-sm file:font-semibold
+                   file:bg-blue-50 file:text-blue-700
+                   hover:file:bg-blue-100"
+               >
+               <p class="mt-2 text-xs text-gray-500">Tamaño máximo del archivo: 16MB</p>
+           </div>
+           <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-full
+               shadow-sm text-lg font-bold text-white bg-blue-600
+               hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2
+               focus:ring-blue-500 transition duration-150 ease-in-out
+               transform hover:scale-105 active:scale-95">
+               Enviar Archivo
+               <svg class="ml-2 -mr-1 w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                   <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l.44-1.101a1 1 0 01.95-1.166h7.676a1 1 0 01.95 1.166l.44 1.101a1 1 0 001.169-1.409l-7-14z"></path>
+               </svg>
+           </button>
+       </form>
+
+       <p class="text-center text-gray-500 text-sm mt-8">
+           Asegúrate de que tu receptor multicast esté activo y escuchando.
+       </p>
+   </div>
+</body>
+</html>

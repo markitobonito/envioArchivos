@@ -1,0 +1,40 @@
+# Minimal modern compose file (no `version` field)
+services:
+  quic-file-transfer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"  # Flask web server
+      - "9999:9999"  # QUIC server
+    volumes:
+      - ./app:/app
+      - ./certs:/certs
+      - ./certs:/app/certs
+      # mount host's tailscale state so the container can query the host daemon
+      - /var/run/tailscale:/var/run/tailscale:ro
+      - /var/lib/tailscale:/var/lib/tailscale:ro
+    working_dir: /app
+    environment:
+      FLASK_APP: "run.py"
+      # Pass in Tailscale auth key / api key via environment (read from the environment of the runner)
+      TAILSCALE_AUTHKEY: "${TAILSCALE_AUTHKEY}"
+      TAILSCALE_API_KEY: "${TAILSCALE_API_KEY}"
+      TAILNET: "${TAILNET}"
+    # Capabilities and device mapping to allow creating a tun device inside the container
+    # For production on Linux: privileged mode or NET_ADMIN + /dev/net/tun are required.
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    restart: unless-stopped
+    # Ejecutar explícitamente /run.py con python3 para evitar que se use run.py relativo a /app
+    command: "python3 /run.py"
+    # NOTE: on Windows/Docker Desktop the host tailscale state path may differ; if the container
+    # cannot see tailscale, consider running the app on the host or adjusting mounts.
+
+networks:
+  default:
+    driver: bridge
