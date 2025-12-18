@@ -143,9 +143,14 @@ def get_tailscale_ips():
                 peers = []
                 for info in data.get("Peer", {}).values():
                     if info.get("Online", False):
+                        # Preferir DNS name para mejor resolucion en contenedores
+                        dns_name = info.get("DNSName", "").rstrip(".")
                         ips = info.get("TailscaleIPs", [])
                         if ips and ips[0] not in self_ips:
-                            peers.append(ips[0])
+                            # Si tenemos DNSName, usarlo; si no, usar IP
+                            peer_addr = dns_name if dns_name else ips[0]
+                            peers.append(peer_addr)
+                            print(f"[DEBUG] Added peer: {peer_addr} (DNS: {dns_name}, IP: {ips[0]})")
                 return peers
             except Exception as e:
                 print("get_tailscale_ips: error parsing status file:", repr(e))
@@ -177,7 +182,9 @@ async def send_file_to_ip(ip: str, filepath: str):
     filename = os.path.basename(filepath)
     print(f"[>] Enviando '{filename}' a {ip} ...")
     try:
+        print(f"[DEBUG] Intentando conectar QUIC a {ip}:9999")
         async with connect(ip, 9999, configuration=config_client) as client:
+            print(f"[DEBUG] Conexión QUIC exitosa a {ip}")
             stream_id = client._quic.get_next_available_stream_id()
             header = filename.encode(errors="ignore") + b"\0"
             client._quic.send_stream_data(stream_id, header, end_stream=False)
@@ -211,7 +218,9 @@ async def send_file_to_ip(ip: str, filepath: str):
             print(f"[+] COMPLETADO! '{filename}' enviado 100 % a {ip} (QUIC)")
             return
     except Exception as e:
-        print(f"[!] Error enviando '{filename}' por QUIC a {ip}: {e}")
+        print(f"[!] Error QUIC a {ip}: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         print("[i] Intentando fallback TCP...")
 
     try:
