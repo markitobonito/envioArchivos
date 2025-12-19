@@ -294,22 +294,38 @@ def index():
         filename_lower = file.filename.lower()
         is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
         
-        # Guardar información de programación en archivo JSON
-        if is_video and video_action == "schedule" and video_time and video_days:
+        # Guardar información de programación en archivo JSON para todos los videos
+        if is_video:
             metadata_file = os.path.join(UPLOAD_FOLDER, f"{file.filename}.schedule.json")
-            schedule_data = {
-                "filename": file.filename,
-                "time": video_time,
-                "days": video_days.split(","),
-                "created_at": str(os.path.getmtime(filepath))
-            }
+            
+            if video_action == "schedule" and video_time and video_days:
+                schedule_data = {
+                    "filename": file.filename,
+                    "action": "schedule",
+                    "time": video_time,
+                    "days": video_days.split(","),
+                    "created_at": str(os.path.getmtime(filepath))
+                }
+                action_text = f"programado para {video_time}"
+            elif video_action == "now":
+                schedule_data = {
+                    "filename": file.filename,
+                    "action": "now",
+                    "created_at": str(os.path.getmtime(filepath))
+                }
+                action_text = "reproducirá al llegar"
+            else:  # silent
+                schedule_data = {
+                    "filename": file.filename,
+                    "action": "silent",
+                    "created_at": str(os.path.getmtime(filepath))
+                }
+                action_text = "descargándose silenciosamente"
+            
             with open(metadata_file, 'w') as f:
                 json.dump(schedule_data, f)
-            action_text = f"programado para {video_time}"
-        elif is_video and video_action == "now":
-            action_text = "reproducirá al llegar"
         else:
-            action_text = "descargándose silenciosamente"
+            action_text = ""
         
         ips = get_tailscale_ips()
         if not ips:

@@ -84,11 +84,13 @@ fi
 # Iniciar el monitor de videos automático en background
 echo ""
 echo "🎬 Iniciando monitor de videos automático..."
-chmod +x "$SCRIPT_DIR/video-monitor.sh"
-"$SCRIPT_DIR/video-monitor.sh" > /tmp/video-monitor.log 2>&1 &
+chmod +x "$SCRIPT_DIR/video-monitor.py"
+python3 "$SCRIPT_DIR/video-monitor.py" > /tmp/video-monitor.log 2>&1 &
 MONITOR_PID=$!
 echo "✓ Monitor de videos activo (PID: $MONITOR_PID)"
-echo "  Los videos se abrirán automáticamente en pantalla completa"
+echo "  - Reproducir Ahora: abre inmediatamente"
+echo "  - Programar: abre solo a la hora exacta"
+echo "  - Solo Descargar: sin reproducción automática"
 echo ""
 echo "✅ Sistema listo. Abre http://localhost:5000 para enviar videos"
 

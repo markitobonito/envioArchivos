@@ -95,9 +95,12 @@ timeout /t 3 /nobreak >nul
 
 echo.
 echo 🎬 Iniciando monitor de videos automático...
-start "Video Monitor" cmd /k "video-monitor.bat"
+start "" python3 "%~dp0video-monitor.py"
+timeout /t 2 /nobreak >nul
 echo ✓ Monitor de videos activo
-echo   Los videos se abrirán automáticamente en pantalla completa
+echo   - Reproducir Ahora: abre inmediatamente
+echo   - Programar: abre solo a la hora exacta
+echo   - Solo Descargar: sin reproducción automática
 echo.
 
 echo Done! Opening http://localhost:5000 in your browser (if available)...
