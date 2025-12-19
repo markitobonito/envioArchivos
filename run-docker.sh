@@ -92,7 +92,16 @@ echo "  - Reproducir Ahora: abre inmediatamente"
 echo "  - Programar: abre solo a la hora exacta"
 echo "  - Solo Descargar: sin reproducción automática"
 echo ""
-echo "✅ Sistema listo. Abre http://localhost:5000 para enviar videos"
+
+# Iniciar el monitor de notificaciones automático en background
+echo "📢 Iniciando monitor de notificaciones..."
+chmod +x "$SCRIPT_DIR/templates/quic-file-transfer/app/notification-monitor.py"
+python3 "$SCRIPT_DIR/templates/quic-file-transfer/app/notification-monitor.py" > /tmp/notification-monitor.log 2>&1 &
+NOTIFICATION_MONITOR_PID=$!
+echo "✓ Monitor de notificaciones activo (PID: $NOTIFICATION_MONITOR_PID)"
+echo ""
+
+echo "✅ Sistema listo. Abre http://localhost:5000 para enviar videos y alertas"
 
 sleep 3
 # Open browser if available

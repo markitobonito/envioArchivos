@@ -103,12 +103,19 @@ echo   - Programar: abre solo a la hora exacta
 echo   - Solo Descargar: sin reproducción automática
 echo.
 
+echo 📢 Iniciando monitor de notificaciones...
+start "" python3 "%~dp0templates\quic-file-transfer\app\notification-monitor.py"
+timeout /t 2 /nobreak >nul
+echo ✓ Monitor de notificaciones activo
+echo.
+
 echo Done! Opening http://localhost:5000 in your browser (if available)...
 echo.
 start http://localhost:5000
 
 echo.
 echo ✅ Sistema listo. Los videos se abrirán automáticamente en pantalla completa
+echo 📢 Las alertas se mostrarán con sonido y voz automáticamente
 echo.
 echo To view live logs, run:
 echo   %COMPOSE_CMD% -f templates\quic-file-transfer\docker-compose.yml logs -f

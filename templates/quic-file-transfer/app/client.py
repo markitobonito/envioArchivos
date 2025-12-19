@@ -3,6 +3,7 @@ import json
 import asyncio
 import threading
 import subprocess
+import requests
 from flask import Flask, request, redirect, render_template, flash
 from aioquic.asyncio import connect, serve, QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
@@ -53,7 +54,28 @@ class FileServerProtocol(QuicConnectionProtocol):
 
                 if b"\0" in self._tmp[stream_id]:
                     header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
-                    filename = header.decode("utf-8", errors="ignore").strip()
+                    header_str = header.decode("utf-8", errors="ignore").strip()
+                    
+                    # Detectar si es un mensaje de notificación (empieza con "MSG:")
+                    if header_str.startswith("MSG:"):
+                        # Es un mensaje - procesar como notificación
+                        message = first_chunk.decode("utf-8", errors="ignore").strip()
+                        print(f"[ALERTA] Notificación recibida: {message}")
+                        
+                        # Guardar notificación en archivo temporal para que el monitor la detecte
+                        notification_file = "/tmp/notification.txt"
+                        try:
+                            with open(notification_file, "w", encoding="utf-8") as f:
+                                f.write(message)
+                            print(f"[+] Notificación guardada en {notification_file}")
+                        except Exception as e:
+                            print(f"[-] Error guardando notificación: {e}")
+                        
+                        del self._tmp[stream_id]
+                        return
+                    
+                    # Es un archivo - procesar como antes
+                    filename = header_str
                     self._names[stream_id] = filename
                     self._received[stream_id] = 0
 
@@ -274,6 +296,31 @@ async def send_file_to_ip(ip: str, filepath: str):
     except Exception as tcp_e:
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
+async def send_notification_quic(ip: str, message: str):
+    """Envía una notificación de alerta por QUIC UDP a un peer."""
+    print(f"[ALERTA] Enviando mensaje a {ip}: {message[:50]}...")
+    try:
+        async with connect(ip, 9999, configuration=config_client) as client:
+            stream_id = client._quic.get_next_available_stream_id()
+            # Enviar header "MSG:" seguido del mensaje
+            header = b"MSG:\0"
+            message_bytes = message.encode("utf-8", errors="ignore")
+            client._quic.send_stream_data(stream_id, header, end_stream=False)
+            client._quic.send_stream_data(stream_id, message_bytes, end_stream=True)
+            print(f"[+] Notificación enviada a {ip} por QUIC")
+            return
+    except Exception as e:
+        print(f"[-] Error enviando notificación QUIC a {ip}: {e}")
+        # Fallback TCP si falla QUIC
+        try:
+            with socket.create_connection((ip, 9999), timeout=10) as s:
+                header = b"MSG:\0"
+                message_bytes = message.encode("utf-8", errors="ignore")
+                s.sendall(header + message_bytes)
+                print(f"[+] Notificación enviada a {ip} por TCP fallback")
+        except Exception as tcp_e:
+            print(f"[-] Error TCP también: {tcp_e}")
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -444,42 +491,47 @@ def watch_video(filename):
     <html lang="es">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
         <title>Reproduciendo: {filename}</title>
         <style>
-            * {{ margin: 0; padding: 0; }}
-            html, body {{ width: 100%; height: 100%; }}
-            body {{ background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }}
-            .video-container {{ flex: 1; display: flex; align-items: center; justify-content: center; position: relative; width: 100%; height: 100%; }}
-            video {{ width: 100vw; height: 100vh; object-fit: contain; }}
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            html, body {{ width: 100vw; height: 100vh; overflow: hidden; }}
+            body {{ background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; position: fixed; top: 0; left: 0; }}
+            .video-container {{ flex: 1; display: flex; align-items: center; justify-content: center; position: absolute; width: 100vw; height: 100vh; top: 0; left: 0; }}
+            video {{ width: 100vw; height: 100vh; object-fit: contain; display: block; }}
             video:fullscreen {{ width: 100vw; height: 100vh; }}
-            .info {{ position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #fff; padding: 15px 20px; border-radius: 8px; font-size: 14px; z-index: 5; }}
+            .info {{ position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.8); color: #fff; padding: 15px 20px; border-radius: 8px; font-size: 14px; z-index: 100; }}
             .info p {{ margin: 5px 0; }}
             .progress {{ width: 200px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; margin-top: 10px; overflow: hidden; }}
             .progress-bar {{ height: 100%; background: #4CAF50; width: 0%; transition: width 0.3s; }}
-            .close-btn {{ position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); color: #fff; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 10; }}
-            .close-btn:hover {{ background: rgba(0,0,0,0.9); }}
-            .fullscreen-prompt {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: #fff; padding: 30px; border-radius: 10px; text-align: center; z-index: 20; display: none; }}
-            .fullscreen-prompt p {{ margin: 10px 0; font-size: 16px; }}
+            .close-btn {{ position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 200; font-weight: bold; }}
+            .close-btn:hover {{ background: rgba(0,0,0,0.95); }}
+            .fullscreen-btn {{ position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 100; }}
+            .fullscreen-btn:hover {{ background: rgba(0,0,0,0.95); }}
+            .fullscreen-prompt {{ position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); color: #fff; padding: 40px; border-radius: 15px; text-align: center; z-index: 150; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.9); }}
+            .fullscreen-prompt p {{ margin: 15px 0; font-size: 18px; }}
+            .fullscreen-prompt .shortcut {{ background: rgba(255,255,255,0.1); padding: 8px 15px; border-radius: 5px; display: inline-block; margin: 10px 0; font-family: monospace; }}
         </style>
     </head>
     <body>
         <div class="video-container" id="video-container">
-            <video id="video" controls autoplay playsinline>
+            <video id="video" autoplay playsinline muted>
                 <source src="/video/{filename}" type="{mime_type}">
                 Tu navegador no soporta reproducción de video.
             </video>
-            <button class="close-btn" onclick="window.close()">Cerrar (ESC)</button>
+            <button class="close-btn" onclick="window.close()">✕ Cerrar</button>
+            <button class="fullscreen-btn" onclick="requestFullscreen()">⛶ Pantalla Completa</button>
             <div class="info">
                 <p><strong>📹 {filename}</strong></p>
                 <p>Tamaño: {file_size_mb:.1f} MB</p>
                 <p>Descargado: <span id="downloaded">0</span> MB</p>
                 <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
-                <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">Presiona F para pantalla completa</p>
+                <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">Presiona <strong>F</strong> para pantalla completa</p>
             </div>
             <div class="fullscreen-prompt" id="fullscreen-prompt">
-                <p>Presiona <strong>F</strong> para pantalla completa</p>
-                <p style="font-size: 12px; margin-top: 20px;">O haz click en el botón de pantalla completa del reproductor</p>
+                <p>🎬 Pantalla Completa</p>
+                <p style="font-size: 14px;">Presiona <span class="shortcut">F</span> o haz click en el botón</p>
+                <p style="font-size: 12px; margin-top: 20px; opacity: 0.7;">ESC para salir</p>
             </div>
         </div>
         <script>
@@ -487,9 +539,10 @@ def watch_video(filename):
             const progressBar = document.getElementById('progress-bar');
             const downloadedSpan = document.getElementById('downloaded');
             const totalSize = {file_size};
+            const promptElement = document.getElementById('fullscreen-prompt');
+            let promptShown = false;
             
-            // Auto-intentar fullscreen
-            function tryFullscreen() {{
+            function requestFullscreen() {{
                 const elem = document.documentElement;
                 const rfs = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.mozRequestFullScreen || elem.msRequestFullscreen;
                 if (rfs) {{
@@ -499,36 +552,44 @@ def watch_video(filename):
                 }}
             }}
             
-            // Cuando el video empieza a reproducirse, intentar fullscreen
-            video.addEventListener('play', () => {{
-                // Esperar un poco para que el navegador esté listo
-                setTimeout(tryFullscreen, 500);
-            }}, {{ once: true }});
+            function showFullscreenPrompt() {{
+                if (!promptShown) {{
+                    promptElement.style.display = 'block';
+                    promptShown = true;
+                    setTimeout(() => {{
+                        promptElement.style.display = 'none';
+                    }}, 4000);
+                }}
+            }}
+            
+            // Mostrar prompt después de 1 segundo
+            setTimeout(showFullscreenPrompt, 1000);
             
             // Atajo de teclado: F para fullscreen
             document.addEventListener('keydown', (e) => {{
                 if (e.key.toLowerCase() === 'f') {{
-                    if (video.requestFullscreen) {{
-                        video.requestFullscreen().catch(err => console.log(err));
-                    }} else if (video.webkitRequestFullscreen) {{
-                        video.webkitRequestFullscreen();
-                    }}
+                    e.preventDefault();
+                    requestFullscreen();
                 }}
                 if (e.key === 'Escape') {{
                     window.close();
                 }}
             }});
             
-            // Mostrar prompt después de 2 segundos si no está en fullscreen
-            setTimeout(() => {{
-                if (!document.fullscreenElement && !document.webkitFullscreenElement) {{
-                    document.getElementById('fullscreen-prompt').style.display = 'block';
-                    setTimeout(() => {{
-                        document.getElementById('fullscreen-prompt').style.display = 'none';
-                    }}, 4000);
+            // Cuando sale de fullscreen, mostrar prompt de nuevo
+            document.addEventListener('fullscreenchange', () => {{
+                if (!document.fullscreenElement) {{
+                    promptShown = false;
                 }}
-            }}, 2000);
+            }});
             
+            // Cuando el video tenga metadata, intentar fullscreen
+            video.addEventListener('loadedmetadata', () => {{
+                // Intentar activar fullscreen automáticamente
+                requestFullscreen();
+            }}, {{ once: true }});
+            
+            // Actualizar barra de progreso
             video.addEventListener('progress', () => {{
                 if (video.buffered.length > 0) {{
                     const bufferedEnd = video.buffered.end(video.buffered.length - 1);
@@ -537,6 +598,13 @@ def watch_video(filename):
                     progressBar.style.width = percentLoaded + '%';
                     downloadedSpan.textContent = mbLoaded.toFixed(1);
                 }}
+            }});
+            
+            // Iniciar reproducción automática
+            video.play().catch(err => {{
+                console.log('Autoplay failed:', err);
+                // Si autoplay falla, mostrar mensaje
+                showFullscreenPrompt();
             }});
         </script>
     </body>
@@ -576,6 +644,99 @@ def api_videos():
         print(f"Error listing videos: {e}")
     
     return json.dumps(videos)
+
+@app.route("/send-notification", methods=["POST"])
+def send_notification():
+    """Envía una notificación de alerta a todos los receptores por QUIC."""
+    message = request.form.get("message", "").strip()
+    
+    if not message:
+        flash("El mensaje no puede estar vacío", "error")
+        return redirect("/")
+    
+    if len(message) > 500:
+        flash("El mensaje es muy largo (máximo 500 caracteres)", "error")
+        return redirect("/")
+    
+    # Obtener IPs de receptores
+    peers = get_tailscale_ips()
+    if not peers:
+        flash("❌ No hay receptores conectados", "error")
+        return redirect("/")
+    
+    # Enviar notificación a todos los peers por QUIC de forma asíncrona
+    def send_alerts():
+        for peer in peers:
+            asyncio.run(send_notification_quic(peer, message))
+    
+    threading.Thread(target=send_alerts, daemon=True).start()
+    flash(f"🚨 ALERTA enviada a {len(peers)} receptores por QUIC", "success")
+    return redirect("/")
+
+def send_notification_to_peer(ip: str, message: str):
+    """Envía una notificación a un peer específico mediante HTTP POST."""
+    try:
+        import requests
+        response = requests.post(
+            f"http://{ip}:5000/receive-notification",
+            json={"message": message},
+            timeout=5
+        )
+        if response.status_code == 200:
+            print(f"[+] Notificación enviada a {ip}")
+        else:
+            print(f"[-] Error al enviar a {ip}: {response.status_code}")
+    except Exception as e:
+        print(f"[-] Error enviando a {ip}: {e}")
+
+@app.route("/receive-notification", methods=["POST"])
+def receive_notification():
+    """Recibe una notificación de alerta y la guarda en archivo temporal."""
+    try:
+        data = request.get_json()
+        message = data.get("message", "").strip() if data else ""
+        
+        if not message:
+            return {"status": "error", "message": "Empty message"}, 400
+        
+        # Guardar notificación en archivo temporal
+        notification_file = "/tmp/notification.txt"
+        with open(notification_file, "w", encoding="utf-8") as f:
+            f.write(message)
+        
+        print(f"[+] Notificación recibida: {message}")
+        
+        return {"status": "ok", "message": "Notification received"}, 200
+    except Exception as e:
+        print(f"[-] Error procesando notificación: {e}")
+        return {"status": "error", "message": str(e)}, 500
+
+@app.route("/show-notification")
+def show_notification():
+    """Muestra la página de notificación."""
+    return render_template("notification.html")
+
+@app.route("/api/pending-notification")
+def api_pending_notification():
+    """API para obtener la notificación pendiente."""
+    try:
+        notification_file = "/tmp/notification.txt"
+        if os.path.exists(notification_file):
+            with open(notification_file, "r", encoding="utf-8") as f:
+                message = f.read().strip()
+            
+            # Eliminar el archivo después de leerlo
+            try:
+                os.remove(notification_file)
+            except:
+                pass
+            
+            if message:
+                return {"message": message}, 200
+    except Exception as e:
+        print(f"Error leyendo notificación: {e}")
+    
+    return {"message": ""}, 200
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000)
