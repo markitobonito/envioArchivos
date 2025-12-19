@@ -294,36 +294,26 @@ def index():
         filename_lower = file.filename.lower()
         is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
         
-        # Guardar información de programación en archivo JSON para todos los videos
+        # Renombrar archivo con flag de acción si es un video
         if is_video:
-            metadata_file = os.path.join(UPLOAD_FOLDER, f"{file.filename}.schedule.json")
-            
             if video_action == "schedule" and video_time and video_days:
-                schedule_data = {
-                    "filename": file.filename,
-                    "action": "schedule",
-                    "time": video_time,
-                    "days": video_days.split(","),
-                    "created_at": str(os.path.getmtime(filepath))
-                }
+                # Renombrar con flag de programación: video.mp4.SCHED_14:30_mon,wed,fri
+                new_filename = f"{file.filename}.SCHED_{video_time}_{video_days}"
                 action_text = f"programado para {video_time}"
-            elif video_action == "now":
-                schedule_data = {
-                    "filename": file.filename,
-                    "action": "now",
-                    "created_at": str(os.path.getmtime(filepath))
-                }
-                action_text = "reproducirá al llegar"
-            else:  # silent
-                schedule_data = {
-                    "filename": file.filename,
-                    "action": "silent",
-                    "created_at": str(os.path.getmtime(filepath))
-                }
+            elif video_action == "silent":
+                # Renombrar con flag silent: video.mp4.SILENT
+                new_filename = f"{file.filename}.SILENT"
                 action_text = "descargándose silenciosamente"
+            else:  # now (default)
+                # Dejar nombre normal
+                new_filename = file.filename
+                action_text = "reproducirá al llegar"
             
-            with open(metadata_file, 'w') as f:
-                json.dump(schedule_data, f)
+            # Renombrar el archivo si es necesario
+            if new_filename != file.filename:
+                new_filepath = os.path.join(UPLOAD_FOLDER, new_filename)
+                os.rename(filepath, new_filepath)
+                filepath = new_filepath
         else:
             action_text = ""
         
