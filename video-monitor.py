@@ -51,14 +51,14 @@ def was_played_today(video_path):
     return (datetime.now() - datetime.fromtimestamp(os.path.getmtime(played_file))).days == 0
 
 def open_video(video_path):
-    """Abrir video con el reproductor disponible"""
+    """Abrir video con el reproductor por defecto del sistema"""
     filename = os.path.basename(video_path)
     print(f"🎬 Abriendo video: {filename}")
     
     try:
         if platform.system() == "Linux":
-            # En Linux, VLC en fullscreen
-            subprocess.Popen(['vlc', '--fullscreen', video_path], 
+            # En Linux, usar xdg-open (reproductor por defecto)
+            subprocess.Popen(['xdg-open', video_path], 
                            stdout=subprocess.DEVNULL, 
                            stderr=subprocess.DEVNULL)
         elif platform.system() == "Darwin":  # macOS

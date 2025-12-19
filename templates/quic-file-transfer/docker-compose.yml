@@ -32,6 +32,8 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     restart: unless-stopped
+    # Ejecutar como root para poder escribir en cualquier lugar (incluyendo /root/Downloads)
+    user: "0"
     # Ejecutar explícitamente /run.py con python3 para evitar que se use run.py relativo a /app
     command: "python3 /run.py"
     # NOTE: on Windows/Docker Desktop the host tailscale state path may differ; if the container
