@@ -281,18 +281,48 @@ def index():
         if not file or file.filename == "":
             flash("No seleccionaste archivo", "error")
             return redirect("/")
+        
+        # Obtener opciones de programación del video
+        video_action = request.form.get("videoAction", "silent")  # now, schedule, silent
+        video_time = request.form.get("videoTime", "")
+        video_days = request.form.get("videoDays", "")
+        
         filepath = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(filepath)
+        
+        # Crear metadata del video si es un video
+        filename_lower = file.filename.lower()
+        is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
+        
+        # Guardar información de programación en archivo JSON
+        if is_video and video_action == "schedule" and video_time and video_days:
+            metadata_file = os.path.join(UPLOAD_FOLDER, f"{file.filename}.schedule.json")
+            schedule_data = {
+                "filename": file.filename,
+                "time": video_time,
+                "days": video_days.split(","),
+                "created_at": str(os.path.getmtime(filepath))
+            }
+            with open(metadata_file, 'w') as f:
+                json.dump(schedule_data, f)
+            action_text = f"programado para {video_time}"
+        elif is_video and video_action == "now":
+            action_text = "reproducirá al llegar"
+        else:
+            action_text = "descargándose silenciosamente"
+        
         ips = get_tailscale_ips()
         if not ips:
             flash("No hay peers Tailscale online para enviar.", "error")
             return redirect("/")
+        
         for ip in ips:
             threading.Thread(
                 target=lambda ip=ip: asyncio.run(send_file_to_ip(ip, filepath)),
                 daemon=True,
             ).start()
-        flash(f"Archivo '{file.filename}' enviándose a {len(ips)} dispositivo(s).", "success")
+        
+        flash(f"Archivo '{file.filename}' enviándose a {len(ips)} dispositivo(s). Video {action_text}.", "success")
         return redirect("/")
     return render_template("index.html")
 

@@ -44,19 +44,6 @@
                
                const grid = document.getElementById('videos-grid');
                
-               // Detectar videos nuevos (comparar por timestamp)
-               const newVideos = videos.filter(v => {
-                   const prevVideo = previousVideos.find(pv => pv.name === v.name);
-                   return !prevVideo || prevVideo.mtime !== v.mtime;
-               });
-               
-               // Si hay video nuevo, abrirlo directamente en pantalla completa
-               if (newVideos.length > 0) {
-                   const latestVideo = newVideos[0];
-                   console.log('Video nuevo detectado, abriendo:', latestVideo.name);
-                   openVideoFullscreen(latestVideo.name);
-               }
-               
                previousVideos = videos;
                
                if (videos.length === 0) {
@@ -80,7 +67,7 @@
                            <h3 class="font-semibold text-gray-900 truncate">${video.name}</h3>
                            <p class="text-sm text-gray-600 mt-1">${video.size}</p>
                            <div class="mt-4 flex gap-2">
-                               <button onclick="openVideoFullscreen('${video.name}')" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-center font-medium hover:bg-blue-700 transition">
+                               <button onclick="openVideo('${video.name}')" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-center font-medium hover:bg-blue-700 transition">
                                    ▶ Reproducir
                                </button>
                                <a href="/video/${video.name}" download class="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg text-center font-medium hover:bg-gray-700 transition">
@@ -92,25 +79,24 @@
                `).join('');
            } catch (error) {
                console.error('Error loading videos:', error);
-               document.getElementById('videos-grid').innerHTML = `
-                   <div class="col-span-full bg-white rounded-lg p-12 text-center text-red-500">
-                       <p>Error al cargar los videos</p>
-                   </div>
-               `;
+               const grid = document.getElementById('videos-grid');
+               if (grid) {
+                   grid.innerHTML = `
+                       <div class="col-span-full bg-white rounded-lg p-12 text-center text-red-500">
+                           <p>Error al cargar los videos</p>
+                       </div>
+                   `;
+               }
            }
        }
        
-       function openVideoFullscreen(filename) {
+       function openVideo(filename) {
            // Abre el video en una nueva ventana/pestaña
-           const watchUrl = `/watch/${filename}?fullscreen=1`;
-           const videoWindow = window.open(watchUrl, 'video-player', 'fullscreen=yes,width=1920,height=1080,menubar=no,toolbar=no,location=no');
-           
-           if (videoWindow) {
-               videoWindow.focus();
-           }
+           const watchUrl = `/watch/${filename}`;
+           window.open(watchUrl, 'video-player', 'width=1920,height=1080,menubar=no,toolbar=no,location=no');
        }
 
-       // Cargar videos cada 2 segundos para detectar nuevos
+       // Cargar videos cada 2 segundos
        loadVideos();
        setInterval(loadVideos, 2000);
    </script>

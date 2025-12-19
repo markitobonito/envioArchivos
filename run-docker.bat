@@ -94,10 +94,18 @@ echo Waiting a few seconds for services to initialize...
 timeout /t 3 /nobreak >nul
 
 echo.
+echo 🎬 Iniciando monitor de videos automático...
+start "Video Monitor" cmd /k "video-monitor.bat"
+echo ✓ Monitor de videos activo
+echo   Los videos se abrirán automáticamente en pantalla completa
+echo.
+
 echo Done! Opening http://localhost:5000 in your browser (if available)...
 echo.
 start http://localhost:5000
 
+echo.
+echo ✅ Sistema listo. Los videos se abrirán automáticamente en pantalla completa
 echo.
 echo To view live logs, run:
 echo   %COMPOSE_CMD% -f templates\quic-file-transfer\docker-compose.yml logs -f

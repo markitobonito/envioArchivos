@@ -81,6 +81,17 @@ elif command -v open >/dev/null 2>&1; then
   open http://localhost:5000 &
 fi
 
+# Iniciar el monitor de videos automático en background
+echo ""
+echo "🎬 Iniciando monitor de videos automático..."
+chmod +x "$SCRIPT_DIR/video-monitor.sh"
+"$SCRIPT_DIR/video-monitor.sh" > /tmp/video-monitor.log 2>&1 &
+MONITOR_PID=$!
+echo "✓ Monitor de videos activo (PID: $MONITOR_PID)"
+echo "  Los videos se abrirán automáticamente en pantalla completa"
+echo ""
+echo "✅ Sistema listo. Abre http://localhost:5000 para enviar videos"
+
 sleep 3
 # Open browser if available
 if which xdg-open >/dev/null 2>&1; then
