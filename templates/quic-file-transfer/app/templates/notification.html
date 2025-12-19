@@ -354,6 +354,18 @@
                 utterance.rate = 1.1;
                 utterance.pitch = 1;
                 utterance.volume = 1;
+                
+                // Cuando termina el TTS, cerrar automáticamente
+                utterance.onend = () => {
+                    console.log("TTS terminado, cerrando en 3 segundos...");
+                    setTimeout(closeAlert, 3000);
+                };
+                
+                utterance.onerror = () => {
+                    console.log("Error en TTS, cerrando en 3 segundos...");
+                    setTimeout(closeAlert, 3000);
+                };
+                
                 window.speechSynthesis.speak(utterance);
             }
         }
@@ -362,7 +374,7 @@
             playAlertSound();
             const message = document.getElementById('messageText').textContent;
             speakMessage(message);
-            resetCountdown();
+            // No reiniciar el contador - simplemente repetir audio/TTS
         }
 
         function resetCountdown() {

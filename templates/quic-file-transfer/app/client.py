@@ -10,25 +10,88 @@ from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import StreamDataReceived
 import socket
 import platform
+import time
+
+def show_native_notification(title: str, message: str, duration: int = 10):
+    """
+    Muestra una notificación nativa del SO (Windows/Linux/macOS).
+    La notificación desaparece automáticamente después de `duration` segundos.
+    
+    Args:
+        title: Título de la notificación
+        message: Contenido del mensaje
+        duration: Segundos que durará la notificación (aprox.)
+    """
+    system = platform.system()
+    
+    try:
+        if system == "Darwin":  # macOS
+            # Usar osascript para notificaciones nativas macOS
+            script = f'display notification "{message}" with title "{title}"'
+            subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
+            print(f"[+] Notificación macOS mostrada")
+            
+        elif system == "Windows":
+            # Usar PowerShell para Windows Toast notifications
+            ps_script = f"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$APP_ID = 'QuicFileTransfer'
+$template = @"
+<toast>
+    <visual>
+        <binding template="ToastText02">
+            <text id="1">{title}</text>
+            <text id="2">{message}</text>
+        </binding>
+    </visual>
+</toast>
+"@
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
+"""
+            subprocess.run(["powershell", "-Command", ps_script], capture_output=True)
+            print(f"[+] Notificación Windows mostrada")
+            
+        elif system == "Linux":
+            # Usar notify-send para Linux
+            subprocess.run(
+                ["notify-send", "-u", "critical", "-t", str(duration * 1000), title, message],
+                check=True,
+                capture_output=True
+            )
+            print(f"[+] Notificación Linux mostrada")
+            
+    except Exception as e:
+        print(f"[-] Error mostrando notificación nativa: {e}")
+        print(f"    Sistema: {system}")
+
 
 def get_downloads_folder():
     """
     Detecta la carpeta de descargas correcta según el SO e idioma.
-    - Windows/macOS en español: ~/Descargas
-    - Otros: ~/Downloads
-    Crea la carpeta si no existe.
+    Prioridad:
+    1. Si existe ~/Descargas → usar esa
+    2. Si existe ~/Downloads → usar esa
+    3. Si ninguna existe → crear ~/Descargas
     """
     home = os.path.expanduser("~")
     
-    # Intentar Descargas primero (español)
+    # Opción 1: Intentar Descargas primero (español)
     descargas_path = os.path.join(home, "Descargas")
     if os.path.exists(descargas_path) and os.path.isdir(descargas_path):
         return descargas_path
     
-    # Fallback a Downloads (inglés)
+    # Opción 2: Intentar Downloads (inglés)
     downloads_path = os.path.join(home, "Downloads")
-    os.makedirs(downloads_path, exist_ok=True)
-    return downloads_path
+    if os.path.exists(downloads_path) and os.path.isdir(downloads_path):
+        return downloads_path
+    
+    # Opción 3: Crear Descargas si ninguna existe
+    os.makedirs(descargas_path, exist_ok=True)
+    return descargas_path
 
 # ...existing code...
 
@@ -62,14 +125,20 @@ class FileServerProtocol(QuicConnectionProtocol):
                         message = first_chunk.decode("utf-8", errors="ignore").strip()
                         print(f"[ALERTA] Notificación recibida: {message}")
                         
-                        # Guardar notificación en archivo temporal para que el monitor la detecte
+                        # Mostrar notificación nativa del SO
+                        threading.Thread(
+                            target=show_native_notification,
+                            args=("🚨 ALERTA URGENTE", message, 10),
+                            daemon=True
+                        ).start()
+                        
+                        # Guardar en archivo temporal para navegador (si es necesario)
                         notification_file = "/tmp/notification.txt"
                         try:
                             with open(notification_file, "w", encoding="utf-8") as f:
                                 f.write(message)
-                            print(f"[+] Notificación guardada en {notification_file}")
-                        except Exception as e:
-                            print(f"[-] Error guardando notificación: {e}")
+                        except:
+                            pass
                         
                         del self._tmp[stream_id]
                         return
@@ -111,7 +180,15 @@ class FileServerProtocol(QuicConnectionProtocol):
                     filename = self._names.pop(stream_id)
                     download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
-                    os.chmod(full_path, 0o644)
+                    
+                    # Aplicar permisos de lectura/escritura para el usuario
+                    try:
+                        # 0o666 = rw-rw-rw (archivos), se ajusta automáticamente según umask
+                        os.chmod(full_path, 0o666)
+                        print(f"[+] Permisos ajustados: {full_path}")
+                    except Exception as e:
+                        print(f"[-] Error ajustando permisos: {e}")
+                    
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
                     print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB) en {full_path}")
 

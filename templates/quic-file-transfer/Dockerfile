@@ -15,7 +15,7 @@ COPY certs /certs
 # Install tailscale client so the container can run `tailscale status` if host state is mounted
 # Use the official install script which handles keys and repositories
 RUN apt-get update && \
-	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus && \
+	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus firefox-esr xvfb && \
 	curl -fsSL https://tailscale.com/install.sh | sh && \
 	rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
