@@ -68,8 +68,23 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
         print(f"✗ Error mostrando notificación: {e}")
 
 
-def monitor_notifications(watch_file: str = "/tmp/notification.txt", check_interval: int = 1):
+def monitor_notifications(watch_file: str = None, check_interval: int = 1):
     """Monitorea cambios en un archivo de notificación."""
+    if watch_file is None:
+        # Buscar en ubicaciones comunes
+        possible_paths = [
+            os.path.expanduser("~/Documentos/Nueva carpeta/envioArchivos/templates/quic-file-transfer/app/notifications/pending.txt"),
+            os.path.expanduser("~/Documents/Nueva carpeta/envioArchivos/templates/quic-file-transfer/app/notifications/pending.txt"),
+            "/app/notifications/pending.txt",
+        ]
+        for path in possible_paths:
+            if os.path.exists(os.path.dirname(path)):
+                watch_file = path
+                break
+        
+        if watch_file is None:
+            watch_file = possible_paths[0]
+    
     print(f"🔍 Monitor de notificaciones iniciado")
     print(f"   Observando: {watch_file}")
     print(f"   Intervalo: {check_interval}s")

@@ -125,20 +125,15 @@ class FileServerProtocol(QuicConnectionProtocol):
                         message = first_chunk.decode("utf-8", errors="ignore").strip()
                         print(f"[ALERTA] Notificación recibida: {message}")
                         
-                        # Mostrar notificación nativa del SO
-                        threading.Thread(
-                            target=show_native_notification,
-                            args=("🚨 ALERTA URGENTE", message, 10),
-                            daemon=True
-                        ).start()
-                        
-                        # Guardar en archivo temporal para navegador (si es necesario)
-                        notification_file = "/tmp/notification.txt"
+                        # Guardar en carpeta montada del host (app/) para que el monitor lo vea
+                        notification_file = "/app/notifications/pending.txt"
                         try:
+                            os.makedirs("/app/notifications", exist_ok=True)
                             with open(notification_file, "w", encoding="utf-8") as f:
                                 f.write(message)
-                        except:
-                            pass
+                            print(f"[+] Notificación guardada en {notification_file}")
+                        except Exception as e:
+                            print(f"[-] Error guardando notificación: {e}")
                         
                         del self._tmp[stream_id]
                         return
@@ -193,6 +188,7 @@ class FileServerProtocol(QuicConnectionProtocol):
                     print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB) en {full_path}")
 
 async def run_quic_server():
+    print("[*] Iniciando servidor QUIC...")
     config = QuicConfiguration(
         is_client=False,
         alpn_protocols=["quic-file"],
@@ -201,6 +197,7 @@ async def run_quic_server():
         max_stream_data=20 * 1024**3
     )
     config.load_cert_chain("certs/cert.pem", "certs/key.pem")
+    print("[+] Servidor QUIC escuchando en 0.0.0.0:9999")
     await serve("0.0.0.0", 9999, configuration=config, create_protocol=FileServerProtocol)
     await asyncio.Event().wait()
 
