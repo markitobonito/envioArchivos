@@ -16,59 +16,100 @@ class FileServerProtocol(QuicConnectionProtocol):
         self._names = {}
         self._received = {}
 
-    def quic_event_received(self, event):
-        if isinstance(event, StreamDataReceived):
-            stream_id = event.stream_id
-            data = event.data
-            length = len(data)
+    def show_native_notification(self, title, message, duration=8):
+        import platform
+        import subprocess
+        system = platform.system()
+        try:
+            print(f"[LOG] Mostrando notificación nativa: {title} - {message}")
+            if system == "Darwin":
+                script = f'display notification "{message}" with title "{title}"'
+                subprocess.run(["osascript", "-e", script])
+            elif system == "Windows":
+                ps_script = f"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$APP_ID = 'QuicFileTransfer'
+$template = @"
+<toast>
+    <visual>
+        <binding template=\"ToastText02">
+            <text id=\"1\">{title}</text>
+            <text id=\"2\">{message}</text>
+        </binding>
+    </visual>
+</toast>
+"@
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
+"""
+                subprocess.run(["powershell", "-Command", ps_script])
+            elif system == "Linux":
+                subprocess.run(["notify-send", "-u", "critical", "-t", str(duration * 1000), title, message])
+        except Exception as e:
+            print(f"[ERROR] Error mostrando notificación: {e}")
 
-            if stream_id not in self._names:
-                if not hasattr(self, '_tmp'):
-                    self._tmp = {}
-                if stream_id not in self._tmp:
-                    self._tmp[stream_id] = b""
-                self._tmp[stream_id] += data
+    def handle_stream_data_received(self, stream_id: int, data: bytes, end_stream: bool):
+        length = len(data)
+        print(f"[LOG] Stream {stream_id} recibió {length} bytes")
 
-                if b"\0" in self._tmp[stream_id]:
-                    header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
-                    filename = header.decode("utf-8", errors="ignore").strip()
+        if stream_id not in self._names:
+            if not hasattr(self, '_tmp'):
+                self._tmp = {}
+            if stream_id not in self._tmp:
+                self._tmp[stream_id] = b""
+            self._tmp[stream_id] += data
+            print(f"[LOG] Stream {stream_id} buffer: {len(self._tmp[stream_id])} bytes acumulados")
+
+            if b"\0" in self._tmp[stream_id]:
+                header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
+                header_str = header.decode("utf-8", errors="ignore").strip()
+                print(f"[LOG] Stream {stream_id} header: '{header_str}'")
+                if header_str == "MSG:":
+                    message = first_chunk.decode("utf-8", errors="ignore").strip()
+                    print(f"[ALERTA] Notificación recibida: {message}")
+                    self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
+                    del self._tmp[stream_id]
+                    print(f"[LOG] Stream {stream_id} notificación procesada y buffer eliminado")
+                    return
+                else:
+                    filename = header_str
                     self._names[stream_id] = filename
                     self._received[stream_id] = 0
-
                     download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
                     os.makedirs(download_dir, exist_ok=True)
                     full_path = os.path.join(download_dir, filename)
-
+                    print(f"[LOG] Stream {stream_id} iniciando descarga de archivo: {full_path}")
                     f = open(full_path, "wb")
                     if first_chunk:
                         f.write(first_chunk)
                         f.flush()
                     self._files[stream_id] = f
-                    print(f"Iniciando descarga -> {filename}")
+                    print(f"[LOG] Stream {stream_id} archivo abierto y primer chunk escrito")
                     del self._tmp[stream_id]
-                return
+            return
 
+        if stream_id in self._files:
+            self._files[stream_id].write(data)
+            self._files[stream_id].flush()
+            self._received[stream_id] += length
+            print(f"[LOG] Stream {stream_id} archivo: {self._received[stream_id]} bytes recibidos en total")
+            if self._received[stream_id] % (100 * 1024 * 1024) < length:
+                print(f"  {self._names[stream_id]} -> {self._received[stream_id]/(1024**3):.2f} GB recibidos")
+        self.transmit()
+        if end_stream:
             if stream_id in self._files:
-                self._files[stream_id].write(data)
-                self._files[stream_id].flush()
-                self._received[stream_id] += length
-
-                if self._received[stream_id] % (100 * 1024 * 1024) < length:
-                    print(f"  {self._names[stream_id]} -> {self._received[stream_id]/(1024**3):.2f} GB recibidos")
-
-            self.transmit()
-
-            if event.end_stream:
-                if stream_id in self._files:
-                    f = self._files.pop(stream_id)
-                    os.fsync(f.fileno())
-                    f.close()
-                    filename = self._names.pop(stream_id)
-                    download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
-                    full_path = os.path.join(download_dir, filename)
-                    os.chmod(full_path, 0o644)
-                    total_gb = self._received.pop(stream_id, 0) / (1024**3)
-                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB)")
+                f = self._files.pop(stream_id)
+                os.fsync(f.fileno())
+                f.close()
+                filename = self._names.pop(stream_id)
+                download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
+                full_path = os.path.join(download_dir, filename)
+                os.chmod(full_path, 0o644)
+                total_gb = self._received.pop(stream_id, 0) / (1024**3)
+                print(f"[LOG] Stream {stream_id} COMPLETADO -> {filename} ({total_gb:.2f} GB)")
 
 async def run_quic_server():
     config = QuicConfiguration(

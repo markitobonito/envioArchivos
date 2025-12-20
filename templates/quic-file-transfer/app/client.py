@@ -102,6 +102,38 @@ class FileServerProtocol(QuicConnectionProtocol):
         self._names = {}
         self._received = {}
 
+    def show_native_notification(self, title, message, duration=8):
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                script = f'display notification "{message}" with title "{title}"'
+                subprocess.run(["osascript", "-e", script])
+            elif system == "Windows":
+                ps_script = f"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$APP_ID = 'QuicFileTransfer'
+$template = @"
+<toast>
+    <visual>
+        <binding template=\"ToastText02\">
+            <text id=\"1\">{title}</text>
+            <text id=\"2\">{message}</text>
+        </binding>
+    </visual>
+</toast>
+"@
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
+"""
+                subprocess.run(["powershell", "-Command", ps_script])
+            elif system == "Linux":
+                subprocess.run(["notify-send", "-u", "critical", "-t", str(duration * 1000), title, message])
+        except Exception as e:
+            print("Error mostrando notificación:", e)
+
     def quic_event_received(self, event):
         if isinstance(event, StreamDataReceived):
             stream_id = event.stream_id
@@ -118,23 +150,10 @@ class FileServerProtocol(QuicConnectionProtocol):
                 if b"\0" in self._tmp[stream_id]:
                     header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
                     header_str = header.decode("utf-8", errors="ignore").strip()
-                    
-                    # Detectar si es un mensaje de notificación (empieza con "MSG:")
                     if header_str.startswith("MSG:"):
-                        # Es un mensaje - procesar como notificación
                         message = first_chunk.decode("utf-8", errors="ignore").strip()
                         print(f"[ALERTA] Notificación recibida: {message}")
-                        
-                        # Guardar en carpeta montada del host (app/) para que el monitor lo vea
-                        notification_file = "/app/notifications/pending.txt"
-                        try:
-                            os.makedirs("/app/notifications", exist_ok=True)
-                            with open(notification_file, "w", encoding="utf-8") as f:
-                                f.write(message)
-                            print(f"[+] Notificación guardada en {notification_file}")
-                        except Exception as e:
-                            print(f"[-] Error guardando notificación: {e}")
-                        
+                        self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
                         del self._tmp[stream_id]
                         return
                     
