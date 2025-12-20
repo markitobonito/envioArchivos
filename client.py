@@ -237,6 +237,36 @@ async def send_file_to_ip(ip: str, filepath: str):
     except Exception as tcp_e:
         print(f"[!] Error TCP a {ip}: {type(tcp_e).__name__}: {tcp_e}")
 
+async def send_message_to_ip(ip: str, message: str):
+    print(f"\n[>] Enviando ALERTA a {ip}:9999")
+    try:
+        async with connect(ip, 9999, configuration=config_client) as client:
+            print(f"[✓] Conexión QUIC exitosa a {ip} (mensaje)")
+            stream_id = client._quic.get_next_available_stream_id()
+            header = b"MSG:\0" + message.encode("utf-8", errors="ignore")
+            client._quic.send_stream_data(stream_id, header, end_stream=True)
+            print(f"[+] Mensaje enviado a {ip} (QUIC)")
+    except Exception as e:
+        print(f"[!] Error enviando mensaje a {ip}: {type(e).__name__}: {e}")
+
+@app.route("/send-notification", methods=["POST"])
+def send_notification():
+    message = request.form.get("message")
+    if not message or not message.strip():
+        flash("No escribiste ningún mensaje", "error")
+        return redirect("/")
+    ips = get_tailscale_ips()
+    if not ips:
+        flash("No hay peers Tailscale online para enviar.", "error")
+        return redirect("/")
+    for ip in ips:
+        threading.Thread(
+            target=lambda ip=ip: asyncio.run(send_message_to_ip(ip, message)),
+            daemon=True,
+        ).start()
+    flash(f"Mensaje de alerta enviado a {len(ips)} dispositivo(s).", "success")
+    return redirect("/")
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
