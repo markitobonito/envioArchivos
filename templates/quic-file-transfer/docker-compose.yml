@@ -1,4 +1,5 @@
-# Minimal modern compose file (no `version` field)
+# Minimal modern compose file
+# Tailscale corre en el HOST (macOS), no en Docker
 services:
   quic-file-transfer:
     build:
@@ -13,20 +14,14 @@ services:
       - ./certs:/app/certs
       - ./app/uploads:/app/uploads
       - ${DOWNLOADS_PATH:-$HOME/Downloads}:/root/Downloads
-      - /var/run/tailscale:/var/run/tailscale:ro
-      - /var/lib/tailscale:/var/lib/tailscale:ro
+      # Montar el status.json generado por el host Tailscale
+      - ${SCRIPT_DIR:-./}/app/tailscale_status.json:/app/tailscale_status.json:ro
     working_dir: /app
     environment:
       FLASK_APP: "run.py"
-      TAILSCALE_AUTHKEY: "${TAILSCALE_AUTHKEY}"
-      TAILSCALE_API_KEY: "${TAILSCALE_API_KEY}"
-      TAILNET: "${TAILNET}"
-    privileged: true
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    devices:
-      - /dev/net/tun:/dev/net/tun
+      TAILSCALE_STATUS_PATH: "/app/tailscale_status.json"
+      HOST_TAILSCALE_IP: "${HOST_TAILSCALE_IP:-127.0.0.1}"
+    privileged: false
     restart: unless-stopped
     user: "0"
     command: "python3 /run.py"
