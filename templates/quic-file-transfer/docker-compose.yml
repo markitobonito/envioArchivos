@@ -4,9 +4,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8080:5000"  # Flask web server
-      - "9999:9999/udp"  # QUIC server (UDP)
+    # IMPORTANTE: Usar network_mode: host para que Flask escuche en la IP de Tailscale
+    # Así Flask está accesible desde 100.x.x.x:5000 y 9999 directo
+    network_mode: host
     volumes:
       - ./app:/app
       - ./certs:/certs
@@ -23,13 +23,7 @@ services:
       TAILSCALE_AUTHKEY: "${TAILSCALE_AUTHKEY}"
       TAILSCALE_API_KEY: "${TAILSCALE_API_KEY}"
       TAILNET: "${TAILNET}"
-    # Usar DNS de Tailscale para resolver direcciones de la red
-    dns:
-      - "100.100.100.100"  # Tailscale's magic DNS server
-      - "8.8.8.8"          # Google DNS fallback
-    # Capabilities and device mapping to allow creating a tun device inside the container
-    # For production on Linux: privileged mode or NET_ADMIN + /dev/net/tun are required.
-    privileged: true
+    # Capabilities for Tailscale inside container
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -40,9 +34,3 @@ services:
     user: "0"
     # Ejecutar explícitamente /run.py con python3 para evitar que se use run.py relativo a /app
     command: "python3 /run.py"
-    # NOTE: on Windows/Docker Desktop the host tailscale state path may differ; if the container
-    # cannot see tailscale, consider running the app on the host or adjusting mounts.
-
-networks:
-  default:
-    driver: bridge
