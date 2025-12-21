@@ -281,14 +281,13 @@ def get_tailscale_ips():
                 peers = []
                 for info in data.get("Peer", {}).values():
                     if info.get("Online", False):
-                        # Preferir DNS name para mejor resolucion en contenedores
-                        dns_name = info.get("DNSName", "").rstrip(".")
                         ips = info.get("TailscaleIPs", [])
                         if ips and ips[0] not in self_ips:
-                            # Si tenemos DNSName, usarlo; si no, usar IP
-                            peer_addr = dns_name if dns_name else ips[0]
-                            peers.append(peer_addr)
-                            print(f"[DEBUG] Added peer: {peer_addr} (DNS: {dns_name}, IP: {ips[0]})")
+                            # Usar IP directamente (no DNS names - pueden fallar en contenedores)
+                            peer_ip = ips[0]
+                            peers.append(peer_ip)
+                            hostname = info.get("HostName", "?")
+                            print(f"[+] Peer detectado: {hostname} -> {peer_ip}")
                 return peers
             except Exception as e:
                 print("get_tailscale_ips: error parsing status file:", repr(e))
@@ -458,11 +457,16 @@ def index():
             action_text = ""
         
         ips = get_tailscale_ips()
+        print(f"[DEBUG INDEX] get_tailscale_ips() retornó: {ips}")
+        
         if not ips:
+            print("[!] No hay peers online")
             flash("No hay peers Tailscale online para enviar.", "error")
             return redirect("/")
         
+        print(f"[+] Enviando a {len(ips)} peers: {ips}")
         for ip in ips:
+            print(f"[THREAD] Iniciando hilo de envío para {ip}")
             threading.Thread(
                 target=lambda ip=ip: asyncio.run(send_file_to_ip(ip, filepath)),
                 daemon=True,

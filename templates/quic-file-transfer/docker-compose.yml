@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"  # Flask web server
+      - "8080:5000"  # Flask web server
       - "9999:9999/udp"  # QUIC server (UDP)
     volumes:
       - ./app:/app
@@ -23,6 +23,10 @@ services:
       TAILSCALE_AUTHKEY: "${TAILSCALE_AUTHKEY}"
       TAILSCALE_API_KEY: "${TAILSCALE_API_KEY}"
       TAILNET: "${TAILNET}"
+    # Usar DNS de Tailscale para resolver direcciones de la red
+    dns:
+      - "100.100.100.100"  # Tailscale's magic DNS server
+      - "8.8.8.8"          # Google DNS fallback
     # Capabilities and device mapping to allow creating a tun device inside the container
     # For production on Linux: privileged mode or NET_ADMIN + /dev/net/tun are required.
     privileged: true
