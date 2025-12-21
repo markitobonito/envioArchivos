@@ -44,11 +44,21 @@ else
     tailscaled --state=/var/lib/tailscale/tailscaled.state >/var/log/tailscaled.log 2>&1 &
     TSD_PID=$!
     echo "tailscaled pid=$TSD_PID"
-    # wait a bit
-    sleep 2
+    # wait for tailscaled to be ready
+    sleep 3
     # run tailscale up
     if tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>/tmp/tailscale.up.err; then
       echo "tailscale up succeeded"
+      # Wait for Tailscale to establish connection (important in Docker)
+      echo "Waiting for Tailscale to connect..."
+      for i in 1 2 3 4 5; do
+        sleep 2
+        if tailscale status 2>/dev/null | grep -q "100\\."; then
+          echo "Tailscale connected with IP"
+          break
+        fi
+        echo "Attempt $i: waiting for Tailscale to get IP..."
+      done
       write_status || echo "Could not write status after 'tailscale up'"
     else
       echo "tailscale up failed; see /tmp/tailscale.up.err"
