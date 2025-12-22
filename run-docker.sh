@@ -153,6 +153,33 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🐳 INICIANDO DOCKER"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# Esperar a que Tailscale sincronice todos los peers
+echo ""
+echo "Esperando a que Tailscale sincronice con todos los peers..."
+TIMEOUT=45
+ELAPSED=0
+
+while [ $ELAPSED -lt $TIMEOUT ]; do
+  STATUS_JSON=$(tailscale status --json 2>/dev/null)
+  
+  # Verificar si hay peers en el JSON
+  if echo "$STATUS_JSON" | grep -q '"Peer".*{'; then
+    PEER_COUNT=$(echo "$STATUS_JSON" | grep -o '"HostName"' | wc -l)
+    echo "✅ Peers detectados: $PEER_COUNT"
+    break
+  fi
+  
+  ATTEMPT=$((ELAPSED / 3 + 1))
+  TOTAL_ATTEMPTS=$((TIMEOUT / 3 + 1))
+  echo "  ⏳ Intento $ATTEMPT/$TOTAL_ATTEMPTS: Esperando sincronización de peers..."
+  sleep 3
+  ELAPSED=$((ELAPSED + 3))
+done
+
+if [ $ELAPSED -ge $TIMEOUT ]; then
+  echo "⚠️  Timeout esperando peers, pero continuamos..."
+fi
+
 # Generar status JSON desde el host (para que el contenedor lo lea)
 echo ""
 echo "Generando tailscale_status.json desde host..."

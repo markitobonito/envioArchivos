@@ -150,10 +150,27 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                 if b"\0" in self._tmp[stream_id]:
                     header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
                     header_str = header.decode("utf-8", errors="ignore").strip()
+                    
+                    # Detectar si es un mensaje/notificación
                     if header_str.startswith("MSG:"):
                         message = first_chunk.decode("utf-8", errors="ignore").strip()
-                        print(f"[ALERTA] Notificación recibida: {message}")
-                        self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
+                        print(f"[🚨 ALERTA] Notificación recibida: {message}")
+                        
+                        # Guardar en archivo para que el monitor lo procese
+                        try:
+                            notification_file = "/tmp/notification.txt"
+                            with open(notification_file, "w", encoding="utf-8") as f:
+                                f.write(message)
+                            print(f"[+] Notificación guardada en {notification_file}")
+                        except Exception as e:
+                            print(f"[-] Error guardando notificación: {e}")
+                        
+                        # También mostrar notificación nativa si es posible
+                        try:
+                            self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
+                        except Exception as e:
+                            print(f"[!] No se pudo mostrar notificación nativa: {e}")
+                        
                         del self._tmp[stream_id]
                         return
                     
@@ -195,13 +212,23 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                     download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
                     
-                    # Aplicar permisos de lectura/escritura para el usuario
+                    # Aplicar permisos de lectura/escritura para TODOS (rw-rw-rw-)
                     try:
-                        # 0o666 = rw-rw-rw (archivos), se ajusta automáticamente según umask
                         os.chmod(full_path, 0o666)
-                        print(f"[+] Permisos ajustados: {full_path}")
+                        print(f"[+] Permisos aplicados: rw-rw-rw- ({full_path})")
                     except Exception as e:
                         print(f"[-] Error ajustando permisos: {e}")
+                    
+                    # En Linux/macOS, intentar cambiar propietario si es necesario
+                    try:
+                        import pwd
+                        current_user = pwd.getpwuid(os.getuid()).pw_uid
+                        file_stat = os.stat(full_path)
+                        if file_stat.st_uid != current_user:
+                            os.chown(full_path, current_user, -1)
+                            print(f"[+] Propietario cambiado al usuario actual")
+                    except Exception as e:
+                        print(f"[*] No se pudo cambiar propietario (normal en algunos sistemas): {e}")
                     
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
                     print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB) en {full_path}")
@@ -394,11 +421,10 @@ async def send_notification_quic(ip: str, message: str):
     try:
         async with connect(ip, 9999, configuration=config_client) as client:
             stream_id = client._quic.get_next_available_stream_id()
-            # Enviar header "MSG:" seguido del mensaje
-            header = b"MSG:\0"
+            # Enviar TODO junto: "MSG:" + \0 + mensaje en UN SOLO paquete
             message_bytes = message.encode("utf-8", errors="ignore")
-            client._quic.send_stream_data(stream_id, header, end_stream=False)
-            client._quic.send_stream_data(stream_id, message_bytes, end_stream=True)
+            payload = b"MSG:\0" + message_bytes
+            client._quic.send_stream_data(stream_id, payload, end_stream=True)
             print(f"[+] Notificación enviada a {ip} por QUIC")
             return
     except Exception as e:
@@ -406,9 +432,9 @@ async def send_notification_quic(ip: str, message: str):
         # Fallback TCP si falla QUIC
         try:
             with socket.create_connection((ip, 9999), timeout=10) as s:
-                header = b"MSG:\0"
                 message_bytes = message.encode("utf-8", errors="ignore")
-                s.sendall(header + message_bytes)
+                payload = b"MSG:\0" + message_bytes
+                s.sendall(payload)
                 print(f"[+] Notificación enviada a {ip} por TCP fallback")
         except Exception as tcp_e:
             print(f"[-] Error TCP también: {tcp_e}")

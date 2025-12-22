@@ -24,12 +24,12 @@
       "fd7a:115c:a1e0::3f35:3a1c/128"
     ],
     "Addrs": [
-      "10.45.176.189:2144",
-      "179.6.16.217:21847",
-      "[2800:200:ed40:252f:9d47:47ca:6aad:e08]:58752",
+      "10.45.176.189:8505",
+      "179.6.16.217:1641",
+      "[2800:200:ed40:252f:6933:baf1:c5e5:4c53]:58752",
       "192.168.0.9:64737",
       "[2800:200:ed40:252f:1438:fe1f:763b:248e]:64737",
-      "[2800:200:ed40:252f:9d47:47ca:6aad:e08]:64737"
+      "[2800:200:ed40:252f:6933:baf1:c5e5:4c53]:64737"
     ],
     "CurAddr": "",
     "Relay": "mia",
@@ -90,7 +90,48 @@
     "MagicDNSEnabled": true
   },
   "CertDomains": null,
-  "Peer": null,
+  "Peer": {
+    "nodekey:94045d837bab49db8495c37271b66ddd474542155680f985963cc84bf1985c02": {
+      "ID": "nWdg1WfDcr11CNTRL",
+      "PublicKey": "nodekey:94045d837bab49db8495c37271b66ddd474542155680f985963cc84bf1985c02",
+      "HostName": "marco-HP-Laptop-15-da0xxx",
+      "DNSName": "marco-hp-laptop-15-da0xxx.tailfb58ed.ts.net.",
+      "OS": "linux",
+      "UserID": 8482722947360927,
+      "TailscaleIPs": [
+        "100.88.92.3",
+        "fd7a:115c:a1e0::f135:5c03"
+      ],
+      "AllowedIPs": [
+        "100.88.92.3/32",
+        "fd7a:115c:a1e0::f135:5c03/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "mia",
+      "PeerRelay": "",
+      "RxBytes": 0,
+      "TxBytes": 0,
+      "Created": "2025-12-22T01:59:03.947044984Z",
+      "LastWrite": "0001-01-01T00:00:00Z",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "0001-01-01T00:00:00Z",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.88.92.3:58872",
+        "http://[fd7a:115c:a1e0::f135:5c03]:48523"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": false,
+      "KeyExpiry": "2026-06-20T01:59:03Z"
+    }
+  },
   "User": {
     "8482722947360927": {
       "ID": 8482722947360927,
