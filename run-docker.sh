@@ -153,6 +153,19 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🐳 INICIANDO DOCKER"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# Detectar el SO para usar el docker-compose correcto
+UNAME=$(uname -s)
+if [ "$UNAME" = "Linux" ]; then
+  COMPOSE_FILE="templates/quic-file-transfer/docker-compose.linux.yml"
+  echo "✅ Detectado: Linux - usando network_mode: host para QUIC en Tailscale"
+elif [ "$UNAME" = "Darwin" ]; then
+  COMPOSE_FILE="templates/quic-file-transfer/docker-compose.yml"
+  echo "✅ Detectado: macOS - usando bridge network con port mapping"
+else
+  COMPOSE_FILE="templates/quic-file-transfer/docker-compose.yml"
+  echo "⚠️  SO desconocido ($UNAME) - usando configuración por defecto"
+fi
+
 # Esperar a que Tailscale sincronice todos los peers
 echo ""
 echo "Esperando a que Tailscale sincronice con todos los peers..."
@@ -199,12 +212,13 @@ else
 fi
 
 echo "Usando: $COMPOSE_CMD"
+echo "Compose file: $COMPOSE_FILE"
 
-export DOWNLOADS_PATH HOST_TAILSCALE_IP
+export DOWNLOADS_PATH HOST_TAILSCALE_IP SCRIPT_DIR
 
 echo ""
 echo "Iniciando contenedores Docker..."
-$COMPOSE_CMD -f templates/quic-file-transfer/docker-compose.yml up --build -d
+$COMPOSE_CMD -f "$COMPOSE_FILE" up --build -d
 
 if [ $? -ne 0 ]; then
   echo "❌ Error: docker compose falló"

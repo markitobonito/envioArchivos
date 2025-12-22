@@ -139,65 +139,64 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
             stream_id = event.stream_id
             data = event.data
             length = len(data)
+            
+            print(f"[DEBUG QUIC] Stream {stream_id}: recibido {len(data)} bytes, end_stream={event.end_stream}")
+            print(f"[DEBUG QUIC] Primeros 50 bytes: {data[:50]}")
 
+            # NOTIFICACIÓN: Si empieza con MSG: directamente
+            if data.startswith(b"MSG:"):
+                print(f"[🚨 DETECTADO NOTIFICACIÓN]")
+                message = data[4:].decode("utf-8", errors="ignore").strip()  # Saltar "MSG:"
+                print(f"[✅ MENSAJE RECIBIDO] {message}")
+                
+                # Guardar en archivo
+                try:
+                    notification_file = "/tmp/notification.txt"
+                    with open(notification_file, "w", encoding="utf-8") as f:
+                        f.write(message)
+                    print(f"[✅] Guardado en {notification_file}")
+                except Exception as e:
+                    print(f"[❌] Error guardando: {e}")
+                
+                # Mostrar notificación nativa
+                try:
+                    self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
+                except Exception as e:
+                    print(f"[!] Error notificación nativa: {e}")
+                
+                return  # Importante: retornar aquí para no procesarlo como archivo
+
+            # ARCHIVO: protocolo normal con \0 separator
             if stream_id not in self._names:
                 if not hasattr(self, '_tmp'):
                     self._tmp = {}
                 if stream_id not in self._tmp:
                     self._tmp[stream_id] = b""
                 self._tmp[stream_id] += data
-                
-                print(f"[DEBUG] Stream {stream_id}: Buffer = {len(self._tmp[stream_id])} bytes, received {len(data)} bytes")
-                print(f"[DEBUG] First 100 bytes: {self._tmp[stream_id][:100]}")
 
                 if b"\0" in self._tmp[stream_id]:
                     header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
                     header_str = header.decode("utf-8", errors="ignore").strip()
                     
-                    print(f"[DEBUG] Header detectado: '{header_str}'")
+                    print(f"[ARCHIVO] Header: {header_str}")
                     
-                    # Detectar si es un mensaje/notificación
-                    if header_str.startswith("MSG"):
-                        message = first_chunk.decode("utf-8", errors="ignore").strip()
-                        print(f"[🚨 ALERTA DETECTADA] Notificación recibida: {message}")
-                        
-                        # Guardar en archivo para que el monitor lo procese
-                        try:
-                            notification_file = "/tmp/notification.txt"
-                            with open(notification_file, "w", encoding="utf-8") as f:
-                                f.write(message)
-                            print(f"[✅] Notificación guardada en {notification_file}")
-                        except Exception as e:
-                            print(f"[❌] Error guardando notificación: {e}")
-                        
-                        # También mostrar notificación nativa si es posible
-                        try:
-                            self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
-                        except Exception as e:
-                            print(f"[!] No se pudo mostrar notificación nativa: {e}")
-                        
-                        del self._tmp[stream_id]
-                        return
-                    
-                    # Es un archivo - procesar como antes
                     filename = header_str
                     self._names[stream_id] = filename
                     self._received[stream_id] = 0
 
-                    # Usar la carpeta de descargas correcta (Descargas o Downloads según idioma)
                     download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
-                    print(f"[DEBUG] Guardando en: {full_path}")
+                    print(f"Iniciando descarga -> {filename}")
 
                     f = open(full_path, "wb")
                     if first_chunk:
                         f.write(first_chunk)
                         f.flush()
                     self._files[stream_id] = f
-                    print(f"Iniciando descarga -> {filename}")
                     del self._tmp[stream_id]
                 return
 
+            # Continuar recibiendo datos del archivo
             if stream_id in self._files:
                 self._files[stream_id].write(data)
                 self._files[stream_id].flush()
@@ -217,26 +216,24 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                     download_dir = get_downloads_folder()
                     full_path = os.path.join(download_dir, filename)
                     
-                    # Aplicar permisos de lectura/escritura para TODOS (rw-rw-rw-)
                     try:
                         os.chmod(full_path, 0o666)
-                        print(f"[+] Permisos aplicados: rw-rw-rw- ({full_path})")
+                        print(f"[+] Permisos ajustados: {full_path}")
                     except Exception as e:
-                        print(f"[-] Error ajustando permisos: {e}")
+                        print(f"[-] Error permisos: {e}")
                     
-                    # En Linux/macOS, intentar cambiar propietario si es necesario
                     try:
                         import pwd
                         current_user = pwd.getpwuid(os.getuid()).pw_uid
                         file_stat = os.stat(full_path)
                         if file_stat.st_uid != current_user:
                             os.chown(full_path, current_user, -1)
-                            print(f"[+] Propietario cambiado al usuario actual")
+                            print(f"[+] Propietario cambiado")
                     except Exception as e:
-                        print(f"[*] No se pudo cambiar propietario (normal en algunos sistemas): {e}")
+                        pass
                     
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
-                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB) en {full_path}")
+                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB)")
 
 async def run_quic_server():
     print("[*] Iniciando servidor QUIC...")
@@ -430,10 +427,10 @@ async def send_notification_quic(ip: str, message: str):
             stream_id = client._quic.get_next_available_stream_id()
             print(f"[DEBUG] Stream ID: {stream_id}")
             
-            # Enviar TODO junto: "MSG:" + \0 + mensaje en UN SOLO paquete
+            # Enviar TODO junto: "MSG:" + mensaje (sin separador) en UN SOLO paquete
             message_bytes = message.encode("utf-8", errors="ignore")
-            payload = b"MSG:\0" + message_bytes
-            print(f"[DEBUG] Payload: {len(payload)} bytes")
+            payload = b"MSG:" + message_bytes
+            print(f"[DEBUG] Payload: {len(payload)} bytes - {payload[:100]}")
             
             client._quic.send_stream_data(stream_id, payload, end_stream=True)
             print(f"[✅] Notificación enviada a {ip} por QUIC")
@@ -448,7 +445,7 @@ async def send_notification_quic(ip: str, message: str):
         try:
             with socket.create_connection((ip, 9999), timeout=10) as s:
                 message_bytes = message.encode("utf-8", errors="ignore")
-                payload = b"MSG:\0" + message_bytes
+                payload = b"MSG:" + message_bytes
                 s.sendall(payload)
                 print(f"[✅] Notificación enviada a {ip} por TCP fallback")
         except Exception as tcp_e:
