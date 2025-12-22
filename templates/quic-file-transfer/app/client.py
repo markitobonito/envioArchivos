@@ -418,38 +418,30 @@ async def send_file_to_ip(ip: str, filepath: str):
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
 async def send_notification_quic(ip: str, message: str):
-    """Envía una notificación de alerta por QUIC UDP a un peer."""
-    print(f"[🚨 ALERTA] Iniciando envío a {ip}: {message[:50]}...")
+    """Envía una notificación de alerta a un peer vía HTTP POST."""
+    print(f"[🚨 ALERTA] Enviando a {ip}: {message[:50]}...")
     try:
-        print(f"[DEBUG] Conectando QUIC a {ip}:9999...")
-        async with connect(ip, 9999, configuration=config_client) as client:
-            print(f"[DEBUG] Conexión QUIC exitosa")
-            stream_id = client._quic.get_next_available_stream_id()
-            print(f"[DEBUG] Stream ID: {stream_id}")
-            
-            # Enviar TODO junto: "MSG:" + mensaje (sin separador) en UN SOLO paquete
-            message_bytes = message.encode("utf-8", errors="ignore")
-            payload = b"MSG:" + message_bytes
-            print(f"[DEBUG] Payload: {len(payload)} bytes - {payload[:100]}")
-            
-            client._quic.send_stream_data(stream_id, payload, end_stream=True)
-            print(f"[✅] Notificación enviada a {ip} por QUIC")
-            return
-    except Exception as e:
-        print(f"[❌] Error QUIC a {ip}: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"[DEBUG] Conectando HTTP a {ip}:5000...")
+        response = requests.post(
+            f"http://{ip}:5000/receive-notification",
+            json={"message": message},
+            timeout=10,
+            verify=False
+        )
         
-        # Fallback TCP si falla QUIC
-        print(f"[*] Intentando fallback TCP a {ip}...")
-        try:
-            with socket.create_connection((ip, 9999), timeout=10) as s:
-                message_bytes = message.encode("utf-8", errors="ignore")
-                payload = b"MSG:" + message_bytes
-                s.sendall(payload)
-                print(f"[✅] Notificación enviada a {ip} por TCP fallback")
-        except Exception as tcp_e:
-            print(f"[❌] Error TCP también: {tcp_e}")
+        if response.status_code == 200:
+            print(f"[✅] Notificación enviada correctamente a {ip}")
+            return True
+        else:
+            print(f"[❌] Error HTTP {response.status_code}")
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"[❌] Timeout conectando a {ip} - peer puede estar offline")
+        return False
+    except Exception as e:
+        print(f"[❌] Error enviando a {ip}: {type(e).__name__}: {str(e)}")
+        return False
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -781,8 +773,9 @@ def api_videos():
     return json.dumps(videos)
 
 @app.route("/send-notification", methods=["POST"])
+@app.route("/send-notification", methods=["POST"])
 def send_notification():
-    """Envía una notificación de alerta a todos los receptores por QUIC."""
+    """Envía una notificación de alerta a todos los receptores."""
     print("[*] RUTA: /send-notification - Notificación POST recibida")
     
     message = request.form.get("message", "").strip()
@@ -810,18 +803,24 @@ def send_notification():
     
     print(f"[+] Enviando a {len(peers)} peers")
     
-    # Enviar notificación a todos los peers por QUIC de forma asíncrona
+    # Enviar notificación a todos los peers de forma asíncrona
     def send_alerts():
         print(f"[*] THREAD: Iniciando envío de alertas a {len(peers)} peers")
         for peer in peers:
             print(f"[*] THREAD: Enviando a {peer}")
             try:
-                asyncio.run(send_notification_quic(peer, message))
+                success = asyncio.run(send_notification_quic(peer, message))
+                if success:
+                    print(f"[✅] Alerta enviada a {peer}")
+                else:
+                    print(f"[⚠️] Alerta posiblemente no enviada a {peer}")
             except Exception as e:
                 print(f"[!] THREAD ERROR: {e}")
+                import traceback
+                traceback.print_exc()
     
     threading.Thread(target=send_alerts, daemon=True).start()
-    flash(f"🚨 ALERTA enviada a {len(peers)} receptores por QUIC", "success")
+    flash(f"🚨 ALERTA enviada a {len(peers)} receptores", "success")
     return redirect("/")
 
 def send_notification_to_peer(ip: str, message: str):
@@ -847,19 +846,40 @@ def receive_notification():
         data = request.get_json()
         message = data.get("message", "").strip() if data else ""
         
+        print(f"[🚨 NOTIFICACIÓN RECIBIDA] {message}")
+        
         if not message:
+            print(f"[!] Mensaje vacío recibido")
             return {"status": "error", "message": "Empty message"}, 400
+        
+        # Crear directorio /tmp si no existe (importante en algunos sistemas)
+        os.makedirs("/tmp", exist_ok=True)
         
         # Guardar notificación en archivo temporal
         notification_file = "/tmp/notification.txt"
-        with open(notification_file, "w", encoding="utf-8") as f:
-            f.write(message)
+        try:
+            with open(notification_file, "w", encoding="utf-8") as f:
+                f.write(message)
+            print(f"[✅] Notificación guardada en {notification_file}")
+            print(f"[✅] Contenido: {message}")
+        except Exception as e:
+            print(f"[❌] Error escribiendo archivo: {e}")
+            return {"status": "error", "message": f"Failed to write file: {str(e)}"}, 500
         
-        print(f"[+] Notificación recibida: {message}")
+        # Mostrar notificación nativa del SO
+        try:
+            print(f"[*] Intentando mostrar notificación nativa...")
+            show_native_notification("🚨 ALERTA URGENTE", message, duration=10)
+            print(f"[✅] Notificación nativa mostrada")
+        except Exception as e:
+            print(f"[⚠️] Error mostrando notificación nativa: {e}")
         
-        return {"status": "ok", "message": "Notification received"}, 200
+        return {"status": "ok", "message": "Notification received and saved"}, 200
+        
     except Exception as e:
         print(f"[-] Error procesando notificación: {e}")
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "message": str(e)}, 500
 
 @app.route("/show-notification")
