@@ -418,32 +418,29 @@ async def send_file_to_ip(ip: str, filepath: str):
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
 async def send_notification_quic(ip: str, message: str):
-    """Envía una notificación de alerta a un peer vía QUIC."""
+    """Envía una notificación de alerta a un peer vía QUIC - IGUAL QUE ARCHIVOS."""
     print(f"[🚨 ALERTA] Enviando vía QUIC a {ip}: {message[:50]}...")
     try:
-        config = QuicConfiguration(
-            is_client=True,
-            alpn_protocols=["quic-file"],
-        )
-        config.verify_mode = False
-        config.idle_timeout = 300
-        
         print(f"[DEBUG] Conectando QUIC a {ip}:9999...")
-        
-        async with await connect(ip, 9999, configuration=config) as protocol:
-            print(f"[DEBUG] Conexión QUIC establecida a {ip}")
+        async with connect(ip, 9999, configuration=config_client) as client:
+            print(f"[DEBUG] Conexión QUIC exitosa a {ip}")
             
-            # Enviar notificación en formato: NOTIFICATION:<mensaje>\0
-            stream_id = 0
-            header = f"NOTIFICATION:{message}"
-            data = header.encode("utf-8") + b"\0"
+            # Usar stream_id obtenido igual que archivos
+            stream_id = client._quic.get_next_available_stream_id()
             
-            protocol.send_stream_data(stream_id, data)
+            # Enviar con prefijo MSG: para que el servidor lo detecte
+            notification_data = b"MSG:" + message.encode("utf-8")
+            
+            # Enviar en un solo chunk con end_stream=True (no es un stream continuo)
+            client._quic.send_stream_data(stream_id, notification_data, end_stream=True)
+            
             print(f"[✅] Notificación enviada vía QUIC a {ip}")
             return True
             
     except Exception as e:
         print(f"[❌] Error enviando notificación a {ip}: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 @app.route("/", methods=["GET", "POST"])
