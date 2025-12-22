@@ -1,0 +1,103 @@
+{
+  "Version": "1.92.3-t9a08e8f1c",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": [
+    "100.125.58.28",
+    "fd7a:115c:a1e0::3f35:3a1c"
+  ],
+  "Self": {
+    "ID": "n9YCAASGKK11CNTRL",
+    "PublicKey": "nodekey:0967af0f2e9bbd2a5e7387a2e5e9e7340dc86a258ed50c26a51df5743ffd3a1b",
+    "HostName": "MacBook-Air-de-markito",
+    "DNSName": "macbook-air-de-markito.tailfb58ed.ts.net.",
+    "OS": "macOS",
+    "UserID": 8482722947360927,
+    "TailscaleIPs": [
+      "100.125.58.28",
+      "fd7a:115c:a1e0::3f35:3a1c"
+    ],
+    "AllowedIPs": [
+      "100.125.58.28/32",
+      "fd7a:115c:a1e0::3f35:3a1c/128"
+    ],
+    "Addrs": [
+      "10.45.176.189:2144",
+      "179.6.16.217:21847",
+      "[2800:200:ed40:252f:9d47:47ca:6aad:e08]:58752",
+      "192.168.0.9:64737",
+      "[2800:200:ed40:252f:1438:fe1f:763b:248e]:64737",
+      "[2800:200:ed40:252f:9d47:47ca:6aad:e08]:64737"
+    ],
+    "CurAddr": "",
+    "Relay": "mia",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2025-12-22T00:51:21.675891193Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "PeerAPIURL": [
+      "http://100.125.58.28:40999",
+      "http://[fd7a:115c:a1e0::3f35:3a1c]:64607"
+    ],
+    "TaildropTarget": 0,
+    "NoFileSharingReason": "",
+    "Capabilities": [
+      "HTTPS://TAILSCALE.COM/s/DEPRECATED-NODE-CAPS#see-https://github.com/tailscale/tailscale/issues/11508",
+      "https://tailscale.com/cap/file-sharing",
+      "https://tailscale.com/cap/is-admin",
+      "https://tailscale.com/cap/is-owner",
+      "https://tailscale.com/cap/ssh",
+      "https://tailscale.com/cap/tailnet-lock",
+      "probe-udp-lifetime",
+      "ssh-behavior-v1",
+      "ssh-env-vars",
+      "store-appc-routes",
+      "tailnet-display-name"
+    ],
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": null,
+      "https://tailscale.com/cap/is-admin": null,
+      "https://tailscale.com/cap/is-owner": null,
+      "https://tailscale.com/cap/ssh": null,
+      "https://tailscale.com/cap/tailnet-lock": null,
+      "probe-udp-lifetime": null,
+      "ssh-behavior-v1": null,
+      "ssh-env-vars": null,
+      "store-appc-routes": null,
+      "tailnet-display-name": [
+        "nash2207@hotmail.com"
+      ]
+    },
+    "InNetworkMap": true,
+    "InMagicSock": false,
+    "InEngine": false,
+    "KeyExpiry": "2026-06-20T00:51:21Z"
+  },
+  "Health": [],
+  "MagicDNSSuffix": "tailfb58ed.ts.net",
+  "CurrentTailnet": {
+    "Name": "nash2207@hotmail.com",
+    "MagicDNSSuffix": "tailfb58ed.ts.net",
+    "MagicDNSEnabled": true
+  },
+  "CertDomains": null,
+  "Peer": null,
+  "User": {
+    "8482722947360927": {
+      "ID": 8482722947360927,
+      "LoginName": "nash2207@hotmail.com",
+      "DisplayName": "marko mART",
+      "ProfilePicURL": "https://lh3.googleusercontent.com/a/ACg8ocI2KL6EEXwkqPZ_rynycDr7FnBmkAFgXwAKA656CJz8JPkSNA=s96-c"
+    }
+  },
+  "ClientVersion": null
+}

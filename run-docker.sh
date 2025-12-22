@@ -7,6 +7,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Cargar variables desde .env si existen
+if [ -f "$SCRIPT_DIR/templates/quic-file-transfer/.env" ]; then
+  set -a
+  source "$SCRIPT_DIR/templates/quic-file-transfer/.env"
+  set +a
+fi
+
+# Fallback a defaults si no están definidas en .env
+: "${TAILSCALE_AUTHKEY:=}"
+: "${TAILSCALE_API_KEY:=}"
+: "${TAILNET:=}"
+
+# Validar que tenemos las credenciales
+if [ -z "$TAILSCALE_AUTHKEY" ]; then
+  echo "❌ Error: TAILSCALE_AUTHKEY no está definida"
+  echo "   Edita $SCRIPT_DIR/templates/quic-file-transfer/.env"
+  exit 1
+fi
+
 # Detectar la carpeta de descargas correcta (Descargas o Downloads según idioma)
 # Primero intentar Descargas (español)
 if [ -d "$HOME/Descargas" ]; then
@@ -29,13 +48,6 @@ if [ -z "$DOWNLOADS_PATH" ] || [ ! -d "$DOWNLOADS_PATH" ]; then
     echo "HOME=$HOME"
     exit 1
 fi
-
-# Defaults (you can edit these or set env in your shell before running)
-: "${TAILSCALE_AUTHKEY:=tskey-auth-ktsHxZY1qZ11CNTRL-XSjjc4JNpEL9jnuB4nWGFLSV3ouK6xrR}"
-: "${TAILSCALE_API_KEY:=tskey-api-kHbb2N391v11CNTRL-zshXmfRoGn1G8s3YSs32o1r4gzopSSHC}"
-: "${TAILNET:=nash2207@hotmail.com}"
-
-export TAILSCALE_AUTHKEY TAILSCALE_API_KEY TAILNET
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🔐 CONFIGURACIÓN DE TAILSCALE (HOST macOS)"
@@ -63,7 +75,48 @@ else
   echo "✅ Tailscale ya está instalado"
 fi
 
-# 2) Verificar si ya estamos conectados a Tailscale
+# 2) Verificar si el daemon tailscaled está corriendo
+echo ""
+echo "Verificando si el daemon Tailscale está corriendo..."
+
+if ! pgrep -x "tailscaled" >/dev/null 2>&1; then
+  echo "⚠️  El daemon tailscaled no está corriendo"
+  echo "   Iniciando Tailscale como servicio..."
+  
+  # Usar brew services para iniciar como servicio de fondo
+  if command -v brew >/dev/null 2>&1; then
+    # Primero, asegúrate de que Homebrew pueda instalar sin pedir contraseña
+    sudo brew services start tailscale 2>/dev/null || {
+      echo "⚠️  brew services requiere contraseña..."
+      sudo -n true 2>/dev/null || {
+        echo "Por favor, ingresa tu contraseña para iniciar Tailscale:"
+        sudo brew services start tailscale
+      }
+    }
+  else
+    echo "❌ Homebrew no encontrado para iniciar el servicio"
+    exit 1
+  fi
+  
+  # Esperar a que el daemon esté listo
+  echo "   Esperando a que tailscaled inicie..."
+  TIMEOUT=15
+  ELAPSED=0
+  while ! pgrep -x "tailscaled" >/dev/null 2>&1 && [ $ELAPSED -lt $TIMEOUT ]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+  done
+  
+  if ! pgrep -x "tailscaled" >/dev/null 2>&1; then
+    echo "❌ Error: tailscaled no inició después de ${TIMEOUT}s"
+    exit 1
+  fi
+  echo "✅ tailscaled iniciado correctamente"
+else
+  echo "✅ tailscaled ya está corriendo"
+fi
+
+# 3) Verificar si ya estamos conectados a Tailscale
 echo ""
 echo "Verificando conexión a Tailscale..."
 TAILSCALE_STATUS=$(tailscale status 2>&1 || echo "")
@@ -75,15 +128,19 @@ if echo "$TAILSCALE_STATUS" | grep -q "Online"; then
 else
   echo "⚠️  Tailscale no conectado. Conectando con authkey..."
   
-  # Intentar conectar
-  if sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
+  # Intentar conectar (sin usar sudo porque el daemon ya corre)
+  if tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
     echo "✅ Tailscale conectado exitosamente"
     sleep 2
     HOST_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
     echo "   IP Tailscale del host: $HOST_TAILSCALE_IP"
   else
     echo "❌ Error: No se pudo conectar a Tailscale"
-    echo "   Verifica tu TAILSCALE_AUTHKEY"
+    echo "   Verifica que tu TAILSCALE_AUTHKEY sea válido"
+    echo ""
+    echo "   Para debugging:"
+    echo "   - tailscale status"
+    echo "   - tailscale logs"
     exit 1
   fi
 fi
