@@ -12,6 +12,9 @@ import socket
 import platform
 import time
 
+# Establecer umask para que todos los archivos se creen con permisos públicos (666)
+os.umask(0o000)
+
 def show_native_notification(title: str, message: str, duration: int = 10):
     """
     Muestra una notificación nativa del SO (Windows/Linux/macOS).
