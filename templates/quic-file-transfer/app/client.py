@@ -418,29 +418,32 @@ async def send_file_to_ip(ip: str, filepath: str):
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
 async def send_notification_quic(ip: str, message: str):
-    """Envía una notificación de alerta a un peer vía HTTP POST."""
-    print(f"[🚨 ALERTA] Enviando a {ip}: {message[:50]}...")
+    """Envía una notificación de alerta a un peer vía QUIC."""
+    print(f"[🚨 ALERTA] Enviando vía QUIC a {ip}: {message[:50]}...")
     try:
-        print(f"[DEBUG] Conectando HTTP a {ip}:5000...")
-        response = requests.post(
-            f"http://{ip}:5000/receive-notification",
-            json={"message": message},
-            timeout=10,
-            verify=False
+        config = QuicConfiguration(
+            is_client=True,
+            alpn_protocols=["quic-file"],
         )
+        config.verify_mode = False
+        config.idle_timeout = 300
         
-        if response.status_code == 200:
-            print(f"[✅] Notificación enviada correctamente a {ip}")
-            return True
-        else:
-            print(f"[❌] Error HTTP {response.status_code}")
-            return False
+        print(f"[DEBUG] Conectando QUIC a {ip}:9999...")
+        
+        async with await connect(ip, 9999, configuration=config) as protocol:
+            print(f"[DEBUG] Conexión QUIC establecida a {ip}")
             
-    except requests.exceptions.Timeout:
-        print(f"[❌] Timeout conectando a {ip} - peer puede estar offline")
-        return False
+            # Enviar notificación en formato: NOTIFICATION:<mensaje>\0
+            stream_id = 0
+            header = f"NOTIFICATION:{message}"
+            data = header.encode("utf-8") + b"\0"
+            
+            protocol.send_stream_data(stream_id, data)
+            print(f"[✅] Notificación enviada vía QUIC a {ip}")
+            return True
+            
     except Exception as e:
-        print(f"[❌] Error enviando a {ip}: {type(e).__name__}: {str(e)}")
+        print(f"[❌] Error enviando notificación a {ip}: {type(e).__name__}: {str(e)}")
         return False
 
 @app.route("/", methods=["GET", "POST"])
