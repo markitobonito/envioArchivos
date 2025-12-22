@@ -417,32 +417,6 @@ async def send_file_to_ip(ip: str, filepath: str):
     except Exception as tcp_e:
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
-async def send_notification_quic(ip: str, message: str):
-    """Envía una notificación de alerta a un peer vía QUIC - IGUAL QUE ARCHIVOS."""
-    print(f"[🚨 ALERTA] Enviando vía QUIC a {ip}: {message[:50]}...")
-    try:
-        print(f"[DEBUG] Conectando QUIC a {ip}:9999...")
-        async with connect(ip, 9999, configuration=config_client) as client:
-            print(f"[DEBUG] Conexión QUIC exitosa a {ip}")
-            
-            # Usar stream_id obtenido igual que archivos
-            stream_id = client._quic.get_next_available_stream_id()
-            
-            # Enviar con prefijo MSG: para que el servidor lo detecte
-            notification_data = b"MSG:" + message.encode("utf-8")
-            
-            # Enviar en un solo chunk con end_stream=True (no es un stream continuo)
-            client._quic.send_stream_data(stream_id, notification_data, end_stream=True)
-            
-            print(f"[✅] Notificación enviada vía QUIC a {ip}")
-            return True
-            
-    except Exception as e:
-        print(f"[❌] Error enviando notificación a {ip}: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -775,7 +749,7 @@ def api_videos():
 @app.route("/send-notification", methods=["POST"])
 @app.route("/send-notification", methods=["POST"])
 def send_notification():
-    """Envía una notificación de alerta a todos los receptores."""
+    """Envía una notificación de alerta a todos los receptores como archivo .txt."""
     print("[*] RUTA: /send-notification - Notificación POST recibida")
     
     message = request.form.get("message", "").strip()
@@ -791,6 +765,21 @@ def send_notification():
         flash("El mensaje es muy largo (máximo 500 caracteres)", "error")
         return redirect("/")
     
+    # Crear archivo .txt temporal con el mensaje
+    import time
+    import uuid
+    temp_filename = f"ALERTA_{uuid.uuid4().hex[:8]}_{int(time.time())}.txt"
+    temp_filepath = os.path.join("/tmp", temp_filename)
+    
+    try:
+        with open(temp_filepath, "w", encoding="utf-8") as f:
+            f.write(message)
+        print(f"[+] Archivo de alerta creado: {temp_filepath}")
+    except Exception as e:
+        print(f"[!] Error creando archivo de alerta: {e}")
+        flash("Error al crear el archivo de alerta", "error")
+        return redirect("/")
+    
     # Obtener IPs de receptores
     print("[*] Obteniendo peers...")
     peers = get_tailscale_ips()
@@ -801,23 +790,28 @@ def send_notification():
         flash("❌ No hay receptores conectados", "error")
         return redirect("/")
     
-    print(f"[+] Enviando a {len(peers)} peers")
+    print(f"[+] Enviando alerta a {len(peers)} peers usando protocolo QUIC")
     
-    # Enviar notificación a todos los peers de forma asíncrona
+    # Enviar archivo de alerta a todos los peers de forma asíncrona (igual que archivos normales)
     def send_alerts():
         print(f"[*] THREAD: Iniciando envío de alertas a {len(peers)} peers")
         for peer in peers:
-            print(f"[*] THREAD: Enviando a {peer}")
+            print(f"[*] THREAD: Enviando alerta a {peer}")
             try:
-                success = asyncio.run(send_notification_quic(peer, message))
-                if success:
-                    print(f"[✅] Alerta enviada a {peer}")
-                else:
-                    print(f"[⚠️] Alerta posiblemente no enviada a {peer}")
+                # Usar la MISMA función que envia archivos
+                asyncio.run(send_file_to_ip(peer, temp_filepath))
+                print(f"[✅] ALERTA enviada a {peer}")
             except Exception as e:
-                print(f"[!] THREAD ERROR: {e}")
+                print(f"[!] THREAD ERROR enviando alerta a {peer}: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # Limpiar archivo temporal después de enviar
+        try:
+            os.remove(temp_filepath)
+            print(f"[+] Archivo temporal eliminado: {temp_filepath}")
+        except Exception as e:
+            print(f"[!] Error eliminando temporal: {e}")
     
     threading.Thread(target=send_alerts, daemon=True).start()
     flash(f"🚨 ALERTA enviada a {len(peers)} receptores", "success")
@@ -839,75 +833,6 @@ def send_notification_to_peer(ip: str, message: str):
     except Exception as e:
         print(f"[-] Error enviando a {ip}: {e}")
 
-@app.route("/receive-notification", methods=["POST"])
-def receive_notification():
-    """Recibe una notificación de alerta y la guarda en archivo temporal."""
-    try:
-        data = request.get_json()
-        message = data.get("message", "").strip() if data else ""
-        
-        print(f"[🚨 NOTIFICACIÓN RECIBIDA] {message}")
-        
-        if not message:
-            print(f"[!] Mensaje vacío recibido")
-            return {"status": "error", "message": "Empty message"}, 400
-        
-        # Crear directorio /tmp si no existe (importante en algunos sistemas)
-        os.makedirs("/tmp", exist_ok=True)
-        
-        # Guardar notificación en archivo temporal
-        notification_file = "/tmp/notification.txt"
-        try:
-            with open(notification_file, "w", encoding="utf-8") as f:
-                f.write(message)
-            print(f"[✅] Notificación guardada en {notification_file}")
-            print(f"[✅] Contenido: {message}")
-        except Exception as e:
-            print(f"[❌] Error escribiendo archivo: {e}")
-            return {"status": "error", "message": f"Failed to write file: {str(e)}"}, 500
-        
-        # Mostrar notificación nativa del SO
-        try:
-            print(f"[*] Intentando mostrar notificación nativa...")
-            show_native_notification("🚨 ALERTA URGENTE", message, duration=10)
-            print(f"[✅] Notificación nativa mostrada")
-        except Exception as e:
-            print(f"[⚠️] Error mostrando notificación nativa: {e}")
-        
-        return {"status": "ok", "message": "Notification received and saved"}, 200
-        
-    except Exception as e:
-        print(f"[-] Error procesando notificación: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}, 500
-
-@app.route("/show-notification")
-def show_notification():
-    """Muestra la página de notificación."""
-    return render_template("notification.html")
-
-@app.route("/api/pending-notification")
-def api_pending_notification():
-    """API para obtener la notificación pendiente."""
-    try:
-        notification_file = "/tmp/notification.txt"
-        if os.path.exists(notification_file):
-            with open(notification_file, "r", encoding="utf-8") as f:
-                message = f.read().strip()
-            
-            # Eliminar el archivo después de leerlo
-            try:
-                os.remove(notification_file)
-            except:
-                pass
-            
-            if message:
-                return {"message": message}, 200
-    except Exception as e:
-        print(f"Error leyendo notificación: {e}")
-    
-    return {"message": ""}, 200
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000)
