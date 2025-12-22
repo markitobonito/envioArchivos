@@ -12,7 +12,7 @@ COPY app ./app
 COPY certs ./certs
 COPY certs /certs
 
-# Instalar dependencias del sistema (SIN Tailscale - lo usamos del host)
+# Instalar Tailscale + dependencias del sistema
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus firefox-esr xvfb && \
 	rm -rf /var/lib/apt/lists/* /var/cache/apt/*

@@ -123,7 +123,7 @@ class FileServerProtocol(QuicConnectionProtocol):
                     filename = self._names.pop(stream_id)
                     download_dir = os.path.expanduser("~/Downloads" if os.name != "nt" else "~/Downloads")
                     full_path = os.path.join(download_dir, filename)
-                    os.chmod(full_path, 0o644)
+                    os.chmod(full_path, 0o666)
                     total_gb = self._received.pop(stream_id, 0) / (1024**3)
                     print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB)")
 

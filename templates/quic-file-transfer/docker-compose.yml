@@ -14,8 +14,11 @@ services:
       - ./certs:/app/certs
       - ./app/uploads:/app/uploads
       - ${DOWNLOADS_PATH:-$HOME/Downloads}:/root/Downloads
-      # Montar el status.json generado por el host Tailscale
+      # Montar el status.json generado por el host Tailscale (fallback)
       - ${SCRIPT_DIR:-./}/app/tailscale_status.json:/app/tailscale_status.json:ro
+      # Montar el socket de Tailscale del HOST para que el contenedor pueda ejecutar 'tailscale status --json'
+      - /var/run/tailscale/:/var/run/tailscale/:ro
+      - /run/tailscale/:/run/tailscale/:ro
     working_dir: /app
     environment:
       FLASK_APP: "run.py"

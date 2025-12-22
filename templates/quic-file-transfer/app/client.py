@@ -264,47 +264,42 @@ config_client.max_data = 1024 * 1024 * 1024
 config_client.max_stream_data = 1024 * 1024 * 1024
 
 def get_tailscale_ips():
-    # First, try to read a pre-generated status file (written by the host) to avoid
-    # requiring the container to talk to tailscaled directly. This allows a simple
-    # host-side command like:
-    #   tailscale status --json > templates/quic-file-transfer/app/tailscale_status.json
-    # The container mounts ./app to /app so we look for /app/tailscale_status.json here.
-    status_path = os.environ.get("TAILSCALE_STATUS_PATH", "/app/tailscale_status.json")
-    if os.path.exists(status_path):
-        try:
-            # Read raw bytes and detect BOM/encoding. Some hosts (Windows tailscale.exe)
-            # may emit UTF-16-LE JSON (starts with 0xFF 0xFE). Try to detect and
-            # decode appropriately to avoid UnicodeDecodeError in the container.
-            with open(status_path, "rb") as fh:
-                raw = fh.read()
-            # Detect BOM for UTF-16/UTF-32; fall back to utf-8
-            encoding = None
-            if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
-                encoding = "utf-16"
-            elif raw.startswith(b"\xff\xfe\x00\x00") or raw.startswith(b"\x00\x00\xfe\xff"):
-                encoding = "utf-32"
-            else:
-                # try utf-8 first, then utf-16 as fallback
-                encoding = "utf-8"
-
+    # Ejecutar 'tailscale status --json' directamente para obtener datos frescos en tiempo real
+    import subprocess
+    
+    data = None
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+        else:
+            print(f"[ERROR] tailscale status failed: {result.stderr}")
+    except Exception as e:
+        print(f"[ERROR] Failed to run tailscale status: {e}")
+        # Fallback: intentar leer archivo estático si existe
+        status_path = os.environ.get("TAILSCALE_STATUS_PATH", "/app/tailscale_status.json")
+        if os.path.exists(status_path):
             try:
-                text = raw.decode(encoding)
-            except Exception:
-                # fallback to utf-16 if utf-8 failed
+                with open(status_path, "rb") as fh:
+                    raw = fh.read()
+                encoding = "utf-8"
+                if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+                    encoding = "utf-16"
                 try:
+                    text = raw.decode(encoding)
+                except Exception:
                     text = raw.decode("utf-16")
-                except Exception as e:
-                    print("get_tailscale_ips: failed to decode status file:", repr(e))
-                    text = None
-
-            if text is not None:
-                data = json.loads(text)
-            else:
-                data = None
-        except Exception as e:
-            print("get_tailscale_ips: failed to read status file:", repr(e))
-            data = None
-        if data:
+                if text:
+                    data = json.loads(text)
+            except Exception as e:
+                print(f"[ERROR] Failed to read status file: {e}")
+    
+    if data:
             try:
                 self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
                 peers = []
