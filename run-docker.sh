@@ -129,7 +129,7 @@ else
   echo "⚠️  Tailscale no conectado. Conectando con authkey..."
   
   # Intentar conectar (sin usar sudo porque el daemon ya corre)
-  if tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
+  if sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
     echo "✅ Tailscale conectado exitosamente"
     sleep 2
     HOST_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
