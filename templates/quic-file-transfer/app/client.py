@@ -146,24 +146,29 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                 if stream_id not in self._tmp:
                     self._tmp[stream_id] = b""
                 self._tmp[stream_id] += data
+                
+                print(f"[DEBUG] Stream {stream_id}: Buffer = {len(self._tmp[stream_id])} bytes, received {len(data)} bytes")
+                print(f"[DEBUG] First 100 bytes: {self._tmp[stream_id][:100]}")
 
                 if b"\0" in self._tmp[stream_id]:
                     header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
                     header_str = header.decode("utf-8", errors="ignore").strip()
                     
+                    print(f"[DEBUG] Header detectado: '{header_str}'")
+                    
                     # Detectar si es un mensaje/notificación
-                    if header_str.startswith("MSG:"):
+                    if header_str.startswith("MSG"):
                         message = first_chunk.decode("utf-8", errors="ignore").strip()
-                        print(f"[🚨 ALERTA] Notificación recibida: {message}")
+                        print(f"[🚨 ALERTA DETECTADA] Notificación recibida: {message}")
                         
                         # Guardar en archivo para que el monitor lo procese
                         try:
                             notification_file = "/tmp/notification.txt"
                             with open(notification_file, "w", encoding="utf-8") as f:
                                 f.write(message)
-                            print(f"[+] Notificación guardada en {notification_file}")
+                            print(f"[✅] Notificación guardada en {notification_file}")
                         except Exception as e:
-                            print(f"[-] Error guardando notificación: {e}")
+                            print(f"[❌] Error guardando notificación: {e}")
                         
                         # También mostrar notificación nativa si es posible
                         try:
@@ -417,27 +422,37 @@ async def send_file_to_ip(ip: str, filepath: str):
 
 async def send_notification_quic(ip: str, message: str):
     """Envía una notificación de alerta por QUIC UDP a un peer."""
-    print(f"[ALERTA] Enviando mensaje a {ip}: {message[:50]}...")
+    print(f"[🚨 ALERTA] Iniciando envío a {ip}: {message[:50]}...")
     try:
+        print(f"[DEBUG] Conectando QUIC a {ip}:9999...")
         async with connect(ip, 9999, configuration=config_client) as client:
+            print(f"[DEBUG] Conexión QUIC exitosa")
             stream_id = client._quic.get_next_available_stream_id()
+            print(f"[DEBUG] Stream ID: {stream_id}")
+            
             # Enviar TODO junto: "MSG:" + \0 + mensaje en UN SOLO paquete
             message_bytes = message.encode("utf-8", errors="ignore")
             payload = b"MSG:\0" + message_bytes
+            print(f"[DEBUG] Payload: {len(payload)} bytes")
+            
             client._quic.send_stream_data(stream_id, payload, end_stream=True)
-            print(f"[+] Notificación enviada a {ip} por QUIC")
+            print(f"[✅] Notificación enviada a {ip} por QUIC")
             return
     except Exception as e:
-        print(f"[-] Error enviando notificación QUIC a {ip}: {e}")
+        print(f"[❌] Error QUIC a {ip}: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
         # Fallback TCP si falla QUIC
+        print(f"[*] Intentando fallback TCP a {ip}...")
         try:
             with socket.create_connection((ip, 9999), timeout=10) as s:
                 message_bytes = message.encode("utf-8", errors="ignore")
                 payload = b"MSG:\0" + message_bytes
                 s.sendall(payload)
-                print(f"[+] Notificación enviada a {ip} por TCP fallback")
+                print(f"[✅] Notificación enviada a {ip} por TCP fallback")
         except Exception as tcp_e:
-            print(f"[-] Error TCP también: {tcp_e}")
+            print(f"[❌] Error TCP también: {tcp_e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -771,26 +786,42 @@ def api_videos():
 @app.route("/send-notification", methods=["POST"])
 def send_notification():
     """Envía una notificación de alerta a todos los receptores por QUIC."""
+    print("[*] RUTA: /send-notification - Notificación POST recibida")
+    
     message = request.form.get("message", "").strip()
+    print(f"[DEBUG] Mensaje recibido: '{message}'")
     
     if not message:
+        print("[!] Mensaje vacío")
         flash("El mensaje no puede estar vacío", "error")
         return redirect("/")
     
     if len(message) > 500:
+        print("[!] Mensaje muy largo")
         flash("El mensaje es muy largo (máximo 500 caracteres)", "error")
         return redirect("/")
     
     # Obtener IPs de receptores
+    print("[*] Obteniendo peers...")
     peers = get_tailscale_ips()
+    print(f"[DEBUG] Peers detectados: {peers}")
+    
     if not peers:
+        print("[!] No hay peers disponibles")
         flash("❌ No hay receptores conectados", "error")
         return redirect("/")
     
+    print(f"[+] Enviando a {len(peers)} peers")
+    
     # Enviar notificación a todos los peers por QUIC de forma asíncrona
     def send_alerts():
+        print(f"[*] THREAD: Iniciando envío de alertas a {len(peers)} peers")
         for peer in peers:
-            asyncio.run(send_notification_quic(peer, message))
+            print(f"[*] THREAD: Enviando a {peer}")
+            try:
+                asyncio.run(send_notification_quic(peer, message))
+            except Exception as e:
+                print(f"[!] THREAD ERROR: {e}")
     
     threading.Thread(target=send_alerts, daemon=True).start()
     flash(f"🚨 ALERTA enviada a {len(peers)} receptores por QUIC", "success")
