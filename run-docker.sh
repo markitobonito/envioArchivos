@@ -50,8 +50,65 @@ if [ -z "$DOWNLOADS_PATH" ] || [ ! -d "$DOWNLOADS_PATH" ]; then
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🔐 CONFIGURACIÓN DE TAILSCALE (HOST macOS)"
+echo "🔐 CONFIGURACIÓN DE TAILSCALE (HOST)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Detectar SO del HOST
+OS_TYPE=$(uname -s)
+echo "Sistema detectado: $OS_TYPE"
+
+# Si es Linux, instalar espeak-ng si no existe
+if [ "$OS_TYPE" = "Linux" ]; then
+    echo ""
+    echo "Verificando TTS (espeak-ng) en Linux..."
+    
+    if ! command -v espeak-ng >/dev/null 2>&1; then
+        echo "⚠️  espeak-ng no instalado. Instalando..."
+        
+        # Detectar distro y usar el package manager correcto
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            DISTRO=$ID
+        else
+            DISTRO="unknown"
+        fi
+        
+        case "$DISTRO" in
+            ubuntu|debian)
+                echo "   Usando apt (Ubuntu/Debian)..."
+                sudo apt-get update -qq && sudo apt-get install -y espeak-ng
+                ;;
+            fedora)
+                echo "   Usando dnf (Fedora)..."
+                sudo dnf install -y espeak-ng
+                ;;
+            rhel|centos)
+                echo "   Usando yum (RHEL/CentOS)..."
+                sudo yum install -y espeak-ng
+                ;;
+            arch)
+                echo "   Usando pacman (Arch)..."
+                sudo pacman -S --noconfirm espeak-ng
+                ;;
+            opensuse*)
+                echo "   Usando zypper (openSUSE)..."
+                sudo zypper install -y espeak-ng
+                ;;
+            *)
+                echo "⚠️  Distro desconocida: $DISTRO"
+                echo "   Intenta instalar espeak-ng manualmente"
+                ;;
+        esac
+        
+        if command -v espeak-ng >/dev/null 2>&1; then
+            echo "✅ espeak-ng instalado"
+        else
+            echo "⚠️  No se pudo instalar espeak-ng, continuando..."
+        fi
+    else
+        echo "✅ espeak-ng ya está instalado"
+    fi
+fi
 
 # 1) Verificar si Tailscale está instalado en el host
 if ! command -v tailscale >/dev/null 2>&1; then
@@ -185,6 +242,20 @@ echo ""
 echo "Generando tailscale_status.json desde host..."
 tailscale status --json > "$SCRIPT_DIR/templates/quic-file-transfer/app/tailscale_status.json" 2>/dev/null || true
 echo "✅ Status generado"
+
+# Iniciar el servicio de API de Tailscale en background
+echo ""
+echo "Iniciando servicio de API de Tailscale (puerto 5001)..."
+
+# Matar proceso viejo si existe
+pkill -f "tailscale-api.py" 2>/dev/null || true
+sleep 1
+
+# Iniciar nuevo proceso
+python3 "$SCRIPT_DIR/tailscale-api.py" > /tmp/tailscale-api.log 2>&1 &
+TAILSCALE_API_PID=$!
+echo "✅ Servicio iniciado (PID: $TAILSCALE_API_PID)"
+sleep 1  # Dar tiempo a que inicie
 
 # Try docker compose (modern/bundled) first, fall back to docker-compose (legacy)
 if docker compose version >/dev/null 2>&1; then

@@ -208,6 +208,18 @@ $speak.Speak(\"{message}\")
                 except Exception as e:
                     print(f"[!] Error notificación nativa: {e}")
                 
+                # Pedir al HOST que lo lea en voz alta
+                try:
+                    print(f"[*] Pidiendo al HOST que lea: '{message}' ({repetitions}x)")
+                    requests.post(
+                        'http://host.docker.internal:5001/speak',
+                        json={"message": message, "repetitions": repetitions},
+                        timeout=30
+                    )
+                    print(f"[✅] HOST leyendo en voz alta")
+                except Exception as e:
+                    print(f"[!] Error TTS HOST: {e}")
+                
                 # Reproducir mensaje en voz alta
                 try:
                     self.speak_alert(message, repetitions)
@@ -314,80 +326,77 @@ config_client.max_data = 1024 * 1024 * 1024
 config_client.max_stream_data = 1024 * 1024 * 1024
 
 def get_tailscale_ips():
-    # Ejecutar 'tailscale status --json' directamente para obtener datos frescos en tiempo real
-    import subprocess
+    """
+    Lógica mejorada:
+    1. Lee tailscale_status.json
+    2. Si hay peers offline → hace ping a esos peers (para activarlos)
+    3. Relee el JSON
+    4. Retorna solo los que estén online
+    """
+    status_path = "/app/tailscale_status.json"
     
-    data = None
-    try:
-        result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-        else:
-            print(f"[ERROR] tailscale status failed: {result.stderr}")
-    except Exception as e:
-        print(f"[ERROR] Failed to run tailscale status: {e}")
-        # Fallback: intentar leer archivo estático si existe
-        status_path = os.environ.get("TAILSCALE_STATUS_PATH", "/app/tailscale_status.json")
-        if os.path.exists(status_path):
-            try:
-                with open(status_path, "rb") as fh:
-                    raw = fh.read()
-                encoding = "utf-8"
-                if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
-                    encoding = "utf-16"
-                try:
-                    text = raw.decode(encoding)
-                except Exception:
-                    text = raw.decode("utf-16")
-                if text:
-                    data = json.loads(text)
-            except Exception as e:
-                print(f"[ERROR] Failed to read status file: {e}")
-    
-    if data:
-            try:
-                self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
-                peers = []
-                for info in data.get("Peer", {}).values():
-                    if info.get("Online", False):
-                        ips = info.get("TailscaleIPs", [])
-                        if ips and ips[0] not in self_ips:
-                            # Usar IP directamente (no DNS names - pueden fallar en contenedores)
-                            peer_ip = ips[0]
-                            peers.append(peer_ip)
-                            hostname = info.get("HostName", "?")
-                            print(f"[+] Peer detectado: {hostname} -> {peer_ip}")
-                return peers
-            except Exception as e:
-                print("get_tailscale_ips: error parsing status file:", repr(e))
-
-    try:
-        result = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
-        peers = []
-        for info in data.get("Peer", {}).values():
-            if info.get("Online", False):
-                ips = info.get("TailscaleIPs", [])
-                if ips and ips[0] not in self_ips:
-                    peers.append(ips[0])
-        return peers
-    except Exception as e:
-        # show the error in the container logs so we can diagnose why tailscale is unavailable
-        print("get_tailscale_ips error:", repr(e))
-        # also print stderr/stdout if available
-        try:
-            if 'result' in locals():
-                print("tailscale stdout:", result.stdout)
-                print("tailscale stderr:", result.stderr)
-        except Exception:
-            pass
+    if not os.path.exists(status_path):
+        print("[!] No hay JSON de Tailscale", flush=True)
         return []
+    
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"[ERROR] {e}", flush=True)
+        return []
+    
+    # Paso 1: Identificar peers offline
+    offline_peers = []
+    for ip, info in data.get("Peer", {}).items():
+        if not info.get("Online", False):
+            ips = info.get("TailscaleIPs", [])
+            if ips:
+                offline_peers.append(ips[0])
+                print(f"[!] Peer offline: {info.get('HostName', '?')} ({ips[0]})", flush=True)
+    
+    # Paso 2: Si hay offline, hacer ping a cada uno para activarlos
+    if offline_peers:
+        print(f"[*] Activando {len(offline_peers)} peers con tailscale ping...", flush=True)
+        for peer_ip in offline_peers:
+            try:
+                # Hacer ping sin bloquear, timeout corto
+                result = subprocess.run(
+                    ["tailscale", "ping", "-c", "1", peer_ip],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                if result.returncode == 0:
+                    print(f"[+] Ping exitoso: {peer_ip}", flush=True)
+                else:
+                    print(f"[!] Ping falló: {peer_ip}", flush=True)
+            except Exception as e:
+                print(f"[!] Error en ping {peer_ip}: {e}", flush=True)
+        
+        # Paso 3: Regenerar JSON para obtener status actualizado
+        print("[*] Regenerando status JSON...", flush=True)
+        try:
+            requests.post('http://host.docker.internal:5001/regenerate', timeout=3)
+            time.sleep(1)
+            with open(status_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            print("[✓] JSON actualizado", flush=True)
+        except Exception as e:
+            print(f"[!] Error regenerando JSON: {e}", flush=True)
+    
+    # Paso 4: Extraer peers que ahora están online
+    self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
+    peers = []
+    for info in data.get("Peer", {}).values():
+        if info.get("Online", False):
+            ips = info.get("TailscaleIPs", [])
+            if ips and ips[0] not in self_ips:
+                peers.append(ips[0])
+                print(f"[+] Peer online: {info.get('HostName', '?')} ({ips[0]})", flush=True)
+    
+    print(f"[✓] Total peers disponibles: {len(peers)}", flush=True)
+    return peers
 
 async def send_file_to_ip(ip: str, filepath: str):
     filename = os.path.basename(filepath)
