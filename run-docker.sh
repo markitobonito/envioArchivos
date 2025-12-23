@@ -257,6 +257,20 @@ TAILSCALE_API_PID=$!
 echo "✅ Servicio iniciado (PID: $TAILSCALE_API_PID)"
 sleep 1  # Dar tiempo a que inicie
 
+# Iniciar el monitor de archivos .msg
+echo ""
+echo "Iniciando monitor de alertas .msg..."
+
+# Matar proceso viejo del monitor si existe
+pkill -f "msg-monitor.py" 2>/dev/null || true
+sleep 1
+
+# Iniciar nuevo monitor
+python3 "$SCRIPT_DIR/msg-monitor.py" > /tmp/msg-monitor.log 2>&1 &
+MSG_MONITOR_PID=$!
+echo "✅ Monitor iniciado (PID: $MSG_MONITOR_PID)"
+sleep 1  # Dar tiempo a que inicie
+
 # Try docker compose (modern/bundled) first, fall back to docker-compose (legacy)
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
