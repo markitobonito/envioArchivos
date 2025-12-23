@@ -57,11 +57,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 OS_TYPE=$(uname -s)
 echo "Sistema detectado: $OS_TYPE"
 
-# Si es Linux, instalar espeak-ng si no existe
+# Si es Linux, instalar espeak-ng y mbrola si no existen
 if [ "$OS_TYPE" = "Linux" ]; then
     echo ""
-    echo "Verificando TTS (espeak-ng) en Linux..."
+    echo "Verificando TTS (espeak-ng + mbrola) en Linux..."
     
+    # Instalar espeak-ng si no existe
     if ! command -v espeak-ng >/dev/null 2>&1; then
         echo "⚠️  espeak-ng no instalado. Instalando..."
         
@@ -107,6 +108,48 @@ if [ "$OS_TYPE" = "Linux" ]; then
         fi
     else
         echo "✅ espeak-ng ya está instalado"
+    fi
+    
+    # Instalar mbrola para mejor calidad de audio
+    if ! command -v mbrola >/dev/null 2>&1; then
+        echo "⚠️  mbrola no instalado. Instalando..."
+        
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            DISTRO=$ID
+        else
+            DISTRO="unknown"
+        fi
+        
+        case "$DISTRO" in
+            ubuntu|debian)
+                echo "   Instalando mbrola + mbrola-es1 (Ubuntu/Debian)..."
+                sudo apt-get install -y mbrola mbrola-es1 2>/dev/null || {
+                    echo "   Instalando solo mbrola..."
+                    sudo apt-get install -y mbrola
+                }
+                ;;
+            fedora)
+                echo "   Instalando mbrola (Fedora)..."
+                sudo dnf install -y mbrola 2>/dev/null || echo "   mbrola no disponible en repos"
+                ;;
+            arch)
+                echo "   Instalando mbrola (Arch)..."
+                sudo pacman -S --noconfirm mbrola 2>/dev/null || echo "   mbrola no disponible en repos"
+                ;;
+            *)
+                echo "   Instalando mbrola..."
+                sudo apt-get install -y mbrola mbrola-es1 2>/dev/null || echo "   Intenta instalar manualmente"
+                ;;
+        esac
+        
+        if command -v mbrola >/dev/null 2>&1; then
+            echo "✅ mbrola instalado"
+        else
+            echo "⚠️  mbrola no disponible, continuando con espeak-ng solo..."
+        fi
+    else
+        echo "✅ mbrola ya está instalado"
     fi
 fi
 
