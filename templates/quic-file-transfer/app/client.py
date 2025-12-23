@@ -137,6 +137,33 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
         except Exception as e:
             print("Error mostrando notificación:", e)
 
+    def speak_alert(self, message, repetitions=1):
+        """Reproduce el mensaje de alerta en voz alta usando TTS del SO."""
+        system = platform.system()
+        for i in range(repetitions):
+            try:
+                if system == "Darwin":  # macOS
+                    subprocess.run(["say", "-v", "es", message], timeout=30)
+                    print(f"[🔊] macOS TTS: {message} ({i+1}/{repetitions})")
+                elif system == "Windows":
+                    ps_script = f"""Add-Type –AssemblyName System.Speech
+$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$speak.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSpecified, [System.Speech.Synthesis.VoiceAge]::NotSpecified, 0, [System.Globalization.CultureInfo]'es-ES')
+$speak.Speak(\"{message}\")
+"""
+                    subprocess.run(["powershell", "-Command", ps_script], timeout=30)
+                    print(f"[🔊] Windows TTS: {message} ({i+1}/{repetitions})")
+                elif system == "Linux":
+                    # Intentar espeak-ng primero, fallback a espeak
+                    try:
+                        subprocess.run(["espeak-ng", "-v", "es", message], timeout=30, check=True)
+                        print(f"[🔊] Linux espeak-ng: {message} ({i+1}/{repetitions})")
+                    except (FileNotFoundError, subprocess.CalledProcessError):
+                        subprocess.run(["espeak", "-v", "es", message], timeout=30, check=True)
+                        print(f"[🔊] Linux espeak: {message} ({i+1}/{repetitions})")
+            except Exception as e:
+                print(f"[!] Error en TTS: {e}")
+
     def quic_event_received(self, event):
         if isinstance(event, StreamDataReceived):
             stream_id = event.stream_id
@@ -149,8 +176,22 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
             # NOTIFICACIÓN: Si empieza con MSG: directamente
             if data.startswith(b"MSG:"):
                 print(f"[🚨 DETECTADO NOTIFICACIÓN]")
-                message = data[4:].decode("utf-8", errors="ignore").strip()  # Saltar "MSG:"
-                print(f"[✅ MENSAJE RECIBIDO] {message}")
+                content = data[4:].decode("utf-8", errors="ignore").strip()  # Saltar "MSG:"
+                
+                # Parsear formato: repeticiones|mensaje
+                try:
+                    parts = content.split("|", 1)
+                    if len(parts) == 2:
+                        repetitions_str, message = parts
+                        repetitions = int(repetitions_str.strip())
+                    else:
+                        message = content
+                        repetitions = 1
+                except (ValueError, IndexError):
+                    message = content
+                    repetitions = 1
+                
+                print(f"[✅ MENSAJE RECIBIDO] {message} (x{repetitions})")
                 
                 # Guardar en archivo
                 try:
@@ -166,6 +207,12 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                     self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
                 except Exception as e:
                     print(f"[!] Error notificación nativa: {e}")
+                
+                # Reproducir mensaje en voz alta
+                try:
+                    self.speak_alert(message, repetitions)
+                except Exception as e:
+                    print(f"[!] Error TTS: {e}")
                 
                 return  # Importante: retornar aquí para no procesarlo como archivo
 
@@ -747,11 +794,14 @@ def api_videos():
 @app.route("/send-notification", methods=["POST"])
 @app.route("/send-notification", methods=["POST"])
 def send_notification():
-    """Envía una notificación de alerta a todos los receptores como archivo .txt."""
+    """Envía una notificación de alerta a todos los receptores como archivo .msg con repeticiones."""
     print("[*] RUTA: /send-notification - Notificación POST recibida")
     
     message = request.form.get("message", "").strip()
+    repetitions = request.form.get("repetitions", "1").strip()
+    
     print(f"[DEBUG] Mensaje recibido: '{message}'")
+    print(f"[DEBUG] Repeticiones: '{repetitions}'")
     
     if not message:
         print("[!] Mensaje vacío")
@@ -763,16 +813,27 @@ def send_notification():
         flash("El mensaje es muy largo (máximo 500 caracteres)", "error")
         return redirect("/")
     
-    # Crear archivo .txt temporal con el mensaje
+    # Validar y convertir repeticiones
+    try:
+        repetitions = int(repetitions)
+        if repetitions < 1 or repetitions > 10:
+            repetitions = 1
+    except ValueError:
+        repetitions = 1
+    
+    # Crear archivo .msg temporal con formato: repeticiones|mensaje
     import time
     import uuid
-    temp_filename = f"ALERTA_{uuid.uuid4().hex[:8]}_{int(time.time())}.txt"
+    temp_filename = f"ALERTA_{uuid.uuid4().hex[:8]}_{int(time.time())}.msg"
     temp_filepath = os.path.join("/tmp", temp_filename)
     
     try:
+        # Formato: repeticiones|mensaje
+        alert_content = f"{repetitions}|{message}"
         with open(temp_filepath, "w", encoding="utf-8") as f:
-            f.write(message)
+            f.write(alert_content)
         print(f"[+] Archivo de alerta creado: {temp_filepath}")
+        print(f"[+] Contenido: {alert_content}")
     except Exception as e:
         print(f"[!] Error creando archivo de alerta: {e}")
         flash("Error al crear el archivo de alerta", "error")
