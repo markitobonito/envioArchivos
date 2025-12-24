@@ -56,12 +56,25 @@ def show_notification(title, message):
                 log_message(f"[📢] Notificación macOS (osascript, 5s)")
         
         elif system == "Linux":
-            # notify-send con timeout de 5000ms (5 segundos) - FUNCIONA BIEN EN LINUX
-            subprocess.run(
-                ["notify-send", "-u", "critical", "-t", "5000", title, message],
-                timeout=5
-            )
-            log_message(f"[📢] Notificación Linux (5s)")
+            # notify-send con timeout de 5000ms (5 segundos)
+            # Usar expire-time en lugar de -t para mejor compatibilidad
+            try:
+                subprocess.run(
+                    ["notify-send", "-u", "critical", "-t", "5000", title, message],
+                    timeout=5
+                )
+                log_message(f"[📢] Notificación Linux enviada (timeout 5s)")
+            except Exception as e:
+                log_message(f"[!] Error con notify-send: {e}")
+                # Fallback: intentar sin timeout
+                try:
+                    subprocess.run(
+                        ["notify-send", "-u", "critical", title, message],
+                        timeout=5
+                    )
+                    log_message(f"[📢] Notificación Linux (sin timeout explícito)")
+                except:
+                    log_message(f"[!] No se pudo mostrar notificación")
         
         elif system == "Windows":
             # Toast notification con duración corta en Windows
@@ -158,20 +171,25 @@ def process_msg_file(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read().strip()
         
+        log_message(f"[DEBUG] Contenido bruto del archivo: '{content}'")
+        
         # Parsear formato: repeticiones|mensaje
         parts = content.split("|", 1)
+        log_message(f"[DEBUG] Partes después de split: {parts}")
+        
         if len(parts) == 2:
             try:
                 repetitions = int(parts[0].strip())
                 message = parts[1].strip()
-            except ValueError:
+            except ValueError as e:
+                log_message(f"[ERROR] No se pudo parsear repeticiones: {e}")
                 repetitions = 1
                 message = content
         else:
             repetitions = 1
             message = content
         
-        log_message(f"[📝] Contenido: {repetitions}x '{message}'")
+        log_message(f"[📝] Parseo final: {repetitions} repeticiones x '{message}'")
         
         # Mostrar notificación
         show_notification("🚨 ALERTA URGENTE", message)

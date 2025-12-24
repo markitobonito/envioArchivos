@@ -814,13 +814,11 @@ def send_notification():
     
     if not message:
         print("[!] Mensaje vacío")
-        flash("El mensaje no puede estar vacío", "error")
-        return redirect("/")
+        return jsonify({"status": "error", "message": "El mensaje no puede estar vacío"}), 400
     
     if len(message) > 500:
         print("[!] Mensaje muy largo")
-        flash("El mensaje es muy largo (máximo 500 caracteres)", "error")
-        return redirect("/")
+        return jsonify({"status": "error", "message": "El mensaje es muy largo (máximo 500 caracteres)"}), 400
     
     # Validar y convertir repeticiones
     try:
@@ -845,8 +843,7 @@ def send_notification():
         print(f"[+] Contenido: {alert_content}")
     except Exception as e:
         print(f"[!] Error creando archivo de alerta: {e}")
-        flash("Error al crear el archivo de alerta", "error")
-        return redirect("/")
+        return jsonify({"status": "error", "message": "Error al crear el archivo de alerta"}), 500
     
     # Obtener IPs de receptores
     print("[*] Obteniendo peers...")
@@ -855,8 +852,7 @@ def send_notification():
     
     if not peers:
         print("[!] No hay peers disponibles")
-        flash("❌ No hay receptores conectados", "error")
-        return redirect("/")
+        return jsonify({"status": "error", "message": "❌ No hay receptores conectados"}), 400
     
     print(f"[+] Enviando alerta a {len(peers)} peers usando protocolo QUIC")
     
@@ -882,8 +878,7 @@ def send_notification():
             print(f"[!] Error eliminando temporal: {e}")
     
     threading.Thread(target=send_alerts, daemon=True).start()
-    flash(f"🚨 ALERTA enviada a {len(peers)} receptores", "success")
-    return redirect("/")
+    return jsonify({"status": "success", "message": f"🚨 Alerta enviada a {len(peers)} receptores", "count": len(peers)}), 200
 
 def send_notification_to_peer(ip: str, message: str):
     """Envía una notificación a un peer específico mediante HTTP POST."""
