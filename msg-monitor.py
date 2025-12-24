@@ -31,23 +31,40 @@ def log_message(msg):
         f.write(log_entry + "\n")
 
 def show_notification(title, message):
-    """Muestra notificación del SO"""
+    """Muestra notificación del SO (desaparece después de 5 segundos)"""
     system = platform.system()
     
     try:
         if system == "Darwin":  # macOS
-            script = f'display notification "{message}" with title "{title}"'
-            subprocess.run(["osascript", "-e", script], timeout=5)
-            log_message(f"[📢] Notificación macOS mostrada")
+            # Usar terminal-notifier si está disponible (mejor control de timeout)
+            try:
+                subprocess.run(
+                    ["terminal-notifier", "-title", title, "-message", message, "-timeout", "5"],
+                    timeout=10
+                )
+                log_message(f"[📢] Notificación macOS (terminal-notifier, 5s)")
+            except FileNotFoundError:
+                # Fallback a osascript con script para cerrar automáticamente
+                import time
+                subprocess.Popen(["osascript", "-e", f'display notification "{message}" with title "{title}"'])
+                # Cerrar la notificación después de 5 segundos
+                time.sleep(5)
+                try:
+                    subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "q" using command down'], timeout=2)
+                except:
+                    pass
+                log_message(f"[📢] Notificación macOS (osascript, 5s)")
         
         elif system == "Linux":
+            # notify-send con timeout de 5000ms (5 segundos) - FUNCIONA BIEN EN LINUX
             subprocess.run(
                 ["notify-send", "-u", "critical", "-t", "5000", title, message],
                 timeout=5
             )
-            log_message(f"[📢] Notificación Linux mostrada")
+            log_message(f"[📢] Notificación Linux (5s)")
         
         elif system == "Windows":
+            # Toast notification con duración corta en Windows
             ps_script = f"""
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
 [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
@@ -65,10 +82,13 @@ $template = @"
 $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xml.LoadXml($template)
 $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+$toast.Tag = "alertas"
+$toast.Group = "alertas"
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
+Start-Sleep -Seconds 5
 """
-            subprocess.run(["powershell", "-Command", ps_script], timeout=5)
-            log_message(f"[📢] Notificación Windows mostrada")
+            subprocess.run(["powershell", "-Command", ps_script], timeout=10)
+            log_message(f"[📢] Notificación Windows (5s)")
     
     except Exception as e:
         log_message(f"[!] Error notificación: {e}")
@@ -100,7 +120,8 @@ def speak_message(message, repetitions=1):
                     # Fallback sin mbrola
                     try:
                         subprocess.run(
-                            ["espeak-ng", "-v", "es", "-a", "200", message],
+                            ["espeak-ng", "-v", "es", "-s", "150", "-p", "45", "-a", "200", message],
+
                             timeout=30
                         )
                         log_message(f"[🔊] Linux espeak-ng: '{message}' ({i+1}/{repetitions})")
