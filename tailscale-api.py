@@ -12,12 +12,25 @@ app = Flask(__name__)
 @app.route('/peers', methods=['GET'])
 def get_peers():
     """Retorna lista de peers ACTIVOS desde el JSON generado por el host"""
-    json_path = Path(os.path.expanduser("~/Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json"))
+    # Usar ruta relativa: ~/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json
+    home = os.path.expanduser("~")
+    json_path = Path(home) / "Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json"
+    
+    # Fallback: buscar en directorios alternativos
+    if not json_path.exists():
+        alt_paths = [
+            Path(home) / ".tailscale_status.json",
+            Path("/tmp/tailscale_status.json"),
+            Path("/app/tailscale_status.json"),
+        ]
+        for alt_path in alt_paths:
+            if alt_path.exists():
+                json_path = alt_path
+                break
     
     if not json_path.exists():
-        print("[!] tailscale_status.json no existe")
+        print(f"[!] tailscale_status.json no existe en {json_path}")
         return jsonify({"peers": []}), 200
-    
     try:
         with open(json_path) as f:
             data = json.load(f)
@@ -25,9 +38,10 @@ def get_peers():
         active_peers = []
         self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
         
-        # Filtrar peers activos (Online: true)
+        # Filtrar peers activos (Online: true O InMagicSock: true)
         for device in data.get("Peer", {}).values():
-            if device.get("Online", False):
+            is_reachable = device.get("Online", False) or device.get("InMagicSock", False)
+            if is_reachable:
                 ips = device.get("TailscaleIPs", [])
                 if ips and ips[0] not in self_ips:
                     ip = ips[0]
@@ -48,7 +62,10 @@ def regenerate():
     import subprocess
     
     try:
-        json_path = os.path.expanduser("~/Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json")
+        # Usar ruta relativa
+        home = os.path.expanduser("~")
+        json_path = home + "/Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json"
+        
         result = subprocess.run(
             ["tailscale", "status", "--json"],
             capture_output=True,
@@ -59,7 +76,7 @@ def regenerate():
         if result.returncode == 0:
             with open(json_path, "w") as f:
                 f.write(result.stdout)
-            print(f"[✓] JSON regenerado")
+            print(f"[✓] JSON regenerado en {json_path}")
             return jsonify({"status": "ok"}), 200
         else:
             print(f"[!] tailscale status falló")

@@ -93,25 +93,13 @@ echo.
 echo Waiting a few seconds for services to initialize...
 timeout /t 3 /nobreak >nul
 
-echo.
-echo 🎬 Iniciando monitor de videos automático...
-start "" python3 "%~dp0video-monitor.py"
-timeout /t 2 /nobreak >nul
-echo ✓ Monitor de videos activo
-echo   - Reproducir Ahora: abre inmediatamente
-echo   - Programar: abre solo a la hora exacta
-echo   - Solo Descargar: sin reproducción automática
-echo.
+REM Iniciar los monitores de HOST (Tailscale API, Alertas, Videos)
+echo Ejecutando: start-monitors.bat
+call "%~dp0start-monitors.bat"
 
-echo 📢 Iniciando monitor de notificaciones...
-start "" python3 "%~dp0templates\quic-file-transfer\app\notification-monitor.py"
-timeout /t 2 /nobreak >nul
-echo ✓ Monitor de notificaciones activo
+echo Done! Opening http://localhost:8080 in your browser (if available)...
 echo.
-
-echo Done! Opening http://localhost:5000 in your browser (if available)...
-echo.
-start http://localhost:5000
+start http://localhost:8080
 
 echo.
 echo ✅ Sistema listo. Los videos se abrirán automáticamente en pantalla completa

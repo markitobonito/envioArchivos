@@ -344,50 +344,42 @@ def get_tailscale_ips():
         print(f"[ERROR] {e}", flush=True)
         return []
     
-    # Paso 1: Identificar peers offline
+    # Paso 1: Identificar peers ALCANZABLES (InMagicSock o Online)
     offline_peers = []
     for ip, info in data.get("Peer", {}).items():
-        if not info.get("Online", False):
+        # Un peer es alcanzable si está en MagicSock O si está Online
+        is_reachable = info.get("InMagicSock", False) or info.get("Online", False)
+        if not is_reachable:
             ips = info.get("TailscaleIPs", [])
             if ips:
                 offline_peers.append(ips[0])
                 print(f"[!] Peer offline: {info.get('HostName', '?')} ({ips[0]})", flush=True)
     
-    # Paso 2: Si hay offline, hacer ping a cada uno para activarlos
+    # Paso 2: Si hay offline, regenerar JSON desde tailscale-api.py (HOST)
     if offline_peers:
-        print(f"[*] Activando {len(offline_peers)} peers con tailscale ping...", flush=True)
-        for peer_ip in offline_peers:
-            try:
-                # Hacer ping sin bloquear, timeout corto
-                result = subprocess.run(
-                    ["tailscale", "ping", "-c", "1", peer_ip],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if result.returncode == 0:
-                    print(f"[+] Ping exitoso: {peer_ip}", flush=True)
-                else:
-                    print(f"[!] Ping falló: {peer_ip}", flush=True)
-            except Exception as e:
-                print(f"[!] Error en ping {peer_ip}: {e}", flush=True)
-        
-        # Paso 3: Regenerar JSON para obtener status actualizado
-        print("[*] Regenerando status JSON...", flush=True)
+        print(f"[*] Regenerando status JSON desde HOST API...", flush=True)
         try:
-            requests.post('http://host.docker.internal:5001/regenerate', timeout=3)
-            time.sleep(1)
-            with open(status_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            print("[✓] JSON actualizado", flush=True)
+            # Llamar a API del HOST para regenerar JSON (tailscale-api.py en puerto 5001)
+            response = requests.post('http://host.docker.internal:5001/regenerate', timeout=5)
+            if response.status_code == 200:
+                print(f"[✓] JSON regenerado via API", flush=True)
+                time.sleep(1)
+                # Releer el JSON actualizado
+                with open(status_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                print("[✓] JSON actualizado", flush=True)
+            else:
+                print(f"[!] Error: API retornó {response.status_code}", flush=True)
         except Exception as e:
             print(f"[!] Error regenerando JSON: {e}", flush=True)
     
-    # Paso 4: Extraer peers que ahora están online
+    # Paso 4: Extraer peers que ahora están alcanzables (InMagicSock o Online)
     self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
     peers = []
     for info in data.get("Peer", {}).values():
-        if info.get("Online", False):
+        # Un peer es válido si está en MagicSock OR Online
+        is_reachable = info.get("InMagicSock", False) or info.get("Online", False)
+        if is_reachable:
             ips = info.get("TailscaleIPs", [])
             if ips and ips[0] not in self_ips:
                 peers.append(ips[0])
