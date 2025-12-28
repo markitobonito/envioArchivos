@@ -53,7 +53,6 @@
                <p class="mt-2 text-xs text-gray-500">Tamaño máximo del archivo: 16MB</p>
            </div>
 
-           <!-- Campos ocultos para programación de video -->
            <div id="videoSchedule" class="hidden bg-purple-50 p-4 rounded-lg border-2 border-purple-200 space-y-4">
                <h3 class="font-bold text-purple-900 flex items-center">
                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
@@ -97,11 +96,6 @@
                </div>
            </div>
 
-           <!-- Campo oculto para pasar datos de programación -->
-           <input type="hidden" name="videoAction" id="videoActionInput" value="now">
-           <input type="hidden" name="videoTime" id="videoTimeInput" value="">
-           <input type="hidden" name="videoDays" id="videoDaysInput" value="">
-
            <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-full
                shadow-sm text-lg font-bold text-white bg-blue-600
                hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2
@@ -135,26 +129,24 @@
            function toggleScheduleForm() {
                const action = document.querySelector('input[name="videoAction"]:checked').value;
                scheduleForm.style.display = action === 'schedule' ? 'block' : 'none';
-               document.getElementById('videoActionInput').value = action;
            }
 
-           // Recolectar datos antes de enviar
+           // Validar antes de enviar
            uploadForm.addEventListener('submit', function(e) {
                const action = document.querySelector('input[name="videoAction"]:checked')?.value;
-               document.getElementById('videoActionInput').value = action || 'silent';
+               const fileName = fileInput.files[0]?.name.toLowerCase() || '';
+               const isVideo = /\.(mp4|webm|mkv|avi|mov|flv|m4v|ts|m3u8)$/.test(fileName);
 
-               if (action === 'schedule') {
+               // Solo validar si es video y es schedule
+               if (isVideo && action === 'schedule') {
                    const time = document.getElementById('videoTime').value;
-                   const days = Array.from(document.querySelectorAll('input[name="videoDays"]:checked')).map(cb => cb.value).join(',');
+                   const days = Array.from(document.querySelectorAll('input[name="videoDays"]:checked')).map(cb => cb.value);
                    
-                   if (!time || !days) {
+                   if (!time || days.length === 0) {
                        e.preventDefault();
                        alert('Por favor selecciona hora y días para la programación');
                        return;
                    }
-                   
-                   document.getElementById('videoTimeInput').value = time;
-                   document.getElementById('videoDaysInput').value = days;
                }
            });
        </script>
@@ -175,11 +167,6 @@
        <!-- Sección de Notificaciones -->
        <div class="mt-8 pt-8 border-t border-gray-200">
            <h2 class="text-2xl font-bold text-gray-900 mb-4">📢 Sistema de Alertas</h2>
-           
-           <!-- Mensaje de respuesta (pequeño, inline) -->
-           <div id="alertMessage" class="mb-4 p-3 rounded-lg text-sm font-semibold hidden" role="alert">
-           </div>
-           
            <form method="post" action="/send-notification" class="space-y-4" id="notificationForm">
                <div>
                    <label for="message" class="block text-sm font-medium text-gray-700 mb-2">
@@ -235,81 +222,5 @@
            </form>
        </div>
 
-       <script>
-       // Capturar envío del formulario de notificaciones
-       document.getElementById('notificationForm').addEventListener('submit', async function(e) {
-           e.preventDefault();
-           
-           const formData = new FormData(this);
-           const message = formData.get('message');
-           const repetitions = formData.get('repetitions');
-           
-           try {
-               const response = await fetch('/send-notification', {
-                   method: 'POST',
-                   body: formData
-               });
-               
-               const data = await response.json();
-               const alertDiv = document.getElementById('alertMessage');
-               
-               if (response.ok && data.status === 'success') {
-                   alertDiv.className = 'mb-4 p-3 rounded-lg text-sm font-semibold bg-green-100 text-green-800 border border-green-300';
-                   alertDiv.textContent = `✅ ${data.message}`;
-                   document.getElementById('message').value = '';
-                   document.getElementById('repetitions').value = '1';
-               } else {
-                   alertDiv.className = 'mb-4 p-3 rounded-lg text-sm font-semibold bg-red-100 text-red-800 border border-red-300';
-                   alertDiv.textContent = `❌ ${data.message}`;
-               }
-               
-               alertDiv.classList.remove('hidden');
-               
-               // Ocultar mensaje después de 5 segundos
-               setTimeout(() => {
-                   alertDiv.classList.add('hidden');
-               }, 5000);
-           } catch (error) {
-               console.error('Error:', error);
-               const alertDiv = document.getElementById('alertMessage');
-               alertDiv.className = 'mb-4 p-3 rounded-lg text-sm font-semibold bg-red-100 text-red-800 border border-red-300';
-               alertDiv.textContent = '❌ Error al enviar la alerta';
-               alertDiv.classList.remove('hidden');
-           }
-       });
-       </script>
-   </div>
-
-   <script>
-       document.getElementById('notificationForm').addEventListener('submit', async function(e) {
-           e.preventDefault();
-           const message = document.getElementById('message').value.trim();
-           
-           if (!message) {
-               alert('Por favor escribe un mensaje');
-               return;
-           }
-
-           try {
-               const response = await fetch('/send-notification', {
-                   method: 'POST',
-                   headers: {
-                       'Content-Type': 'application/x-www-form-urlencoded',
-                   },
-                   body: 'message=' + encodeURIComponent(message)
-               });
-
-               if (response.ok) {
-                   document.getElementById('message').value = '';
-                   alert('✅ Alerta enviada a todos los receptores');
-               } else {
-                   alert('❌ Error al enviar la alerta');
-               }
-           } catch (error) {
-               console.error('Error:', error);
-               alert('❌ Error de conexión');
-           }
-       });
-   </script>
 </body>
 </html>

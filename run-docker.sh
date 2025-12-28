@@ -57,47 +57,112 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 OS_TYPE=$(uname -s)
 echo "Sistema detectado: $OS_TYPE"
 
-# Si es Linux, instalar espeak-ng y mbrola si no existen
+# Si es Linux, instalar pico2wave (libttspico-utils) y espeak-ng
 if [ "$OS_TYPE" = "Linux" ]; then
     echo ""
-    echo "Verificando TTS (espeak-ng + mbrola) en Linux..."
+    echo "Instalando motores TTS para Linux..."
     
-    # Instalar espeak-ng si no existe
-    if ! command -v espeak-ng >/dev/null 2>&1; then
-        echo "⚠️  espeak-ng no instalado. Instalando..."
-        
-        # Detectar distro y usar el package manager correcto
-        if [ -f /etc/os-release ]; then
-            . /etc/os-release
-            DISTRO=$ID
-        else
-            DISTRO="unknown"
-        fi
+    # Detectar distro
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        DISTRO=$ID
+    else
+        DISTRO="unknown"
+    fi
+    
+    # 1. INSTALAR PICO2WAVE PRIMERO (libttspico-utils) - PRIORITARIO
+    if ! command -v pico2wave >/dev/null 2>&1; then
+        echo "⚠️  pico2wave no instalado. Instalando libttspico-utils..."
         
         case "$DISTRO" in
             ubuntu|debian)
-                echo "   Usando apt (Ubuntu/Debian)..."
-                sudo apt-get update -qq && sudo apt-get install -y espeak-ng
+                sudo apt-get update -qq
+                sudo apt-get install -y libttspico-utils
                 ;;
             fedora)
-                echo "   Usando dnf (Fedora)..."
+                sudo dnf install -y libttspico-utils
+                ;;
+            rhel|centos)
+                sudo yum install -y libttspico-utils
+                ;;
+            arch)
+                sudo pacman -S --noconfirm libttspico
+                ;;
+            opensuse*)
+                sudo zypper install -y libttspico-utils
+                ;;
+            *)
+                echo "⚠️  Distro desconocida: $DISTRO, se saltará pico2wave"
+                ;;
+        esac
+        
+        if command -v pico2wave >/dev/null 2>&1; then
+            echo "✅ pico2wave (libttspico-utils) instalado"
+        else
+            echo "⚠️  pico2wave no disponible, se usará espeak-ng como fallback"
+        fi
+    else
+        echo "✅ pico2wave ya está instalado"
+    fi
+    
+    # 2. INSTALAR LIBNOTIFY-BIN (para notify-send)
+    if ! command -v notify-send >/dev/null 2>&1; then
+        echo "⚠️  libnotify-bin no instalado. Instalando..."
+        
+        case "$DISTRO" in
+            ubuntu|debian)
+                sudo apt-get update -qq
+                sudo apt-get install -y libnotify-bin
+                ;;
+            fedora)
+                sudo dnf install -y libnotify
+                ;;
+            rhel|centos)
+                sudo yum install -y libnotify
+                ;;
+            arch)
+                sudo pacman -S --noconfirm libnotify
+                ;;
+            opensuse*)
+                sudo zypper install -y libnotify
+                ;;
+            *)
+                echo "⚠️  No se pudo instalar libnotify-bin"
+                ;;
+        esac
+        
+        if command -v notify-send >/dev/null 2>&1; then
+            echo "✅ libnotify-bin instalado"
+        else
+            echo "⚠️  No se pudo instalar libnotify-bin, continuando..."
+        fi
+    else
+        echo "✅ libnotify-bin ya está instalado"
+    fi
+    
+    # 3. INSTALAR ESPEAK-NG (fallback para pico2wave)
+    if ! command -v espeak-ng >/dev/null 2>&1; then
+        echo "⚠️  espeak-ng no instalado. Instalando..."
+        
+        case "$DISTRO" in
+            ubuntu|debian)
+                sudo apt-get update -qq
+                sudo apt-get install -y espeak-ng
+                ;;
+            fedora)
                 sudo dnf install -y espeak-ng
                 ;;
             rhel|centos)
-                echo "   Usando yum (RHEL/CentOS)..."
                 sudo yum install -y espeak-ng
                 ;;
             arch)
-                echo "   Usando pacman (Arch)..."
                 sudo pacman -S --noconfirm espeak-ng
                 ;;
             opensuse*)
-                echo "   Usando zypper (openSUSE)..."
                 sudo zypper install -y espeak-ng
                 ;;
             *)
-                echo "⚠️  Distro desconocida: $DISTRO"
-                echo "   Intenta instalar espeak-ng manualmente"
+                echo "⚠️  No se pudo instalar espeak-ng"
                 ;;
         esac
         
@@ -108,48 +173,6 @@ if [ "$OS_TYPE" = "Linux" ]; then
         fi
     else
         echo "✅ espeak-ng ya está instalado"
-    fi
-    
-    # Instalar mbrola para mejor calidad de audio
-    if ! command -v mbrola >/dev/null 2>&1; then
-        echo "⚠️  mbrola no instalado. Instalando..."
-        
-        if [ -f /etc/os-release ]; then
-            . /etc/os-release
-            DISTRO=$ID
-        else
-            DISTRO="unknown"
-        fi
-        
-        case "$DISTRO" in
-            ubuntu|debian)
-                echo "   Instalando mbrola + mbrola-es1 (Ubuntu/Debian)..."
-                sudo apt-get install -y mbrola mbrola-es1 2>/dev/null || {
-                    echo "   Instalando solo mbrola..."
-                    sudo apt-get install -y mbrola
-                }
-                ;;
-            fedora)
-                echo "   Instalando mbrola (Fedora)..."
-                sudo dnf install -y mbrola 2>/dev/null || echo "   mbrola no disponible en repos"
-                ;;
-            arch)
-                echo "   Instalando mbrola (Arch)..."
-                sudo pacman -S --noconfirm mbrola 2>/dev/null || echo "   mbrola no disponible en repos"
-                ;;
-            *)
-                echo "   Instalando mbrola..."
-                sudo apt-get install -y mbrola mbrola-es1 2>/dev/null || echo "   Intenta instalar manualmente"
-                ;;
-        esac
-        
-        if command -v mbrola >/dev/null 2>&1; then
-            echo "✅ mbrola instalado"
-        else
-            echo "⚠️  mbrola no disponible, continuando con espeak-ng solo..."
-        fi
-    else
-        echo "✅ mbrola ya está instalado"
     fi
 fi
 
@@ -300,7 +323,7 @@ TAILSCALE_API_PID=$!
 echo "✅ Servicio iniciado (PID: $TAILSCALE_API_PID)"
 sleep 1  # Dar tiempo a que inicie
 
-# Iniciar el monitor de archivos .msg
+# Iniciar el monitor de alertas .msg
 echo ""
 echo "Iniciando monitor de alertas .msg..."
 
@@ -311,7 +334,21 @@ sleep 1
 # Iniciar nuevo monitor
 python3 "$SCRIPT_DIR/msg-monitor.py" > /tmp/msg-monitor.log 2>&1 &
 MSG_MONITOR_PID=$!
-echo "✅ Monitor iniciado (PID: $MSG_MONITOR_PID)"
+echo "✅ Monitor .msg iniciado (PID: $MSG_MONITOR_PID)"
+sleep 1  # Dar tiempo a que inicie
+
+# Iniciar el monitor de videos
+echo ""
+echo "Iniciando monitor de videos..."
+
+# Matar proceso viejo del monitor de videos si existe
+pkill -f "video-monitor.py" 2>/dev/null || true
+sleep 1
+
+# Iniciar nuevo monitor de videos
+python3 "$SCRIPT_DIR/video-monitor.py" > /tmp/video-monitor.log 2>&1 &
+VIDEO_MONITOR_PID=$!
+echo "✅ Monitor de videos iniciado (PID: $VIDEO_MONITOR_PID)"
 sleep 1  # Dar tiempo a que inicie
 
 # Try docker compose (modern/bundled) first, fall back to docker-compose (legacy)

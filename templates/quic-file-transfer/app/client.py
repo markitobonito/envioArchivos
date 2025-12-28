@@ -313,8 +313,6 @@ async def run_quic_server():
 
 app = Flask(__name__)
 app.secret_key = "multicast-secret"
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 config_client = QuicConfiguration(
     is_client=True,
@@ -398,8 +396,11 @@ def get_tailscale_ips():
     print(f"[✓] Total peers disponibles: {len(peers)}", flush=True)
     return peers
 
-async def send_file_to_ip(ip: str, filepath: str):
-    filename = os.path.basename(filepath)
+async def send_file_to_ip(ip: str, filepath: str, filename: str = None):
+    """Envía un archivo a través de QUIC con el nombre especificado"""
+    if filename is None:
+        filename = os.path.basename(filepath)
+    
     print(f"[>] Enviando '{filename}' a {ip} ...")
     try:
         print(f"[DEBUG] Intentando conectar QUIC a {ip}:9999")
@@ -482,37 +483,36 @@ def index():
         # Obtener opciones de programación del video
         video_action = request.form.get("videoAction", "silent")  # now, schedule, silent
         video_time = request.form.get("videoTime", "")
-        video_days = request.form.get("videoDays", "")
-        
-        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(filepath)
+        video_days_list = request.form.getlist("videoDays")  # getlist para múltiples checkboxes
+        video_days = ",".join(video_days_list) if video_days_list else ""
         
         # Crear metadata del video si es un video
         filename_lower = file.filename.lower()
         is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
         
-        # Renombrar archivo con flag de acción si es un video
+        # Determinar el nombre final del archivo con flag de acción si es un video
         if is_video:
             if video_action == "schedule" and video_time and video_days:
-                # Renombrar con flag de programación: video.mp4.SCHED_14:30_mon,wed,fri
-                new_filename = f"{file.filename}.SCHED_{video_time}_{video_days}"
+                # Agregar flag de programación: video.mp4.SCHED_14:30_mon,wed,fri
+                final_filename = f"{file.filename}.SCHED_{video_time}_{video_days}"
                 action_text = f"programado para {video_time}"
             elif video_action == "silent":
-                # Renombrar con flag silent: video.mp4.SILENT
-                new_filename = f"{file.filename}.SILENT"
+                # Agregar flag silent: video.mp4.SILENT
+                final_filename = f"{file.filename}.SILENT"
                 action_text = "descargándose silenciosamente"
             else:  # now (default)
                 # Dejar nombre normal
-                new_filename = file.filename
+                final_filename = file.filename
                 action_text = "reproducirá al llegar"
-            
-            # Renombrar el archivo si es necesario
-            if new_filename != file.filename:
-                new_filepath = os.path.join(UPLOAD_FOLDER, new_filename)
-                os.rename(filepath, new_filepath)
-                filepath = new_filepath
         else:
+            final_filename = file.filename
             action_text = ""
+        
+        # Guardar archivo temporalmente en memoria para enviarlo
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            file.save(tmp.name)
+            tmp_filepath = tmp.name
         
         ips = get_tailscale_ips()
         print(f"[DEBUG INDEX] get_tailscale_ips() retornó: {ips}")
@@ -520,15 +520,20 @@ def index():
         if not ips:
             print("[!] No hay peers online")
             flash("No hay peers Tailscale online para enviar.", "error")
+            os.remove(tmp_filepath)
             return redirect("/")
         
         print(f"[+] Enviando a {len(ips)} peers: {ips}")
         for ip in ips:
             print(f"[THREAD] Iniciando hilo de envío para {ip}")
+            # Pasar el nombre final con flags, no el temporal
             threading.Thread(
-                target=lambda ip=ip: asyncio.run(send_file_to_ip(ip, filepath)),
+                target=lambda ip=ip, tmpfile=tmp_filepath, finalname=final_filename: asyncio.run(send_file_to_ip(ip, tmpfile, finalname)),
                 daemon=True,
             ).start()
+        
+        # Limpiar archivo temporal después de un tiempo
+        threading.Timer(30.0, lambda: os.remove(tmp_filepath) if os.path.exists(tmp_filepath) else None).start()
         
         flash(f"Archivo '{file.filename}' enviándose a {len(ips)} dispositivo(s). Video {action_text}.", "success")
         return redirect("/")

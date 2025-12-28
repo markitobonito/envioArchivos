@@ -73,10 +73,10 @@ def should_play_scheduled(filename):
         return False
     
     try:
-        # Extraer tiempo y días: "video.mp4.SCHED_14:30_mon,wed"
+        # Extraer tiempo y días: "video.mp4.SCHED_14:30_monday,wednesday"
         parts = filename.split('.SCHED_')[1].split('_', 1)
         scheduled_time = parts[0]  # "14:30"
-        scheduled_days = parts[1] if len(parts) > 1 else ""  # "mon,wed"
+        scheduled_days = parts[1] if len(parts) > 1 else ""  # "monday,wednesday"
         
         # Obtener hora actual
         now = datetime.now()
@@ -85,13 +85,17 @@ def should_play_scheduled(filename):
         days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
         current_day = days_en[day_num]
         
+        print(f"[DEBUG] Checando programación: {filename}")
+        print(f"[DEBUG] Hora actual: {current_time}, Hora programada: {scheduled_time}")
+        print(f"[DEBUG] Día actual: {current_day}, Días programados: {scheduled_days}")
+        
         # Comparar
         if current_time == scheduled_time:
-            # Verificar si el día coincide (permite abreviaturas)
-            if current_day in scheduled_days or current_day[:3] in scheduled_days:
+            # Verificar si el día coincide (nombres completos)
+            if current_day in scheduled_days:
                 return True
-    except:
-        pass
+    except Exception as e:
+        print(f"[ERROR] Error parsing scheduled video: {e}")
     
     return False
 

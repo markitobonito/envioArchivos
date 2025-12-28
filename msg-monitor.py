@@ -56,25 +56,13 @@ def show_notification(title, message):
                 log_message(f"[📢] Notificación macOS (osascript, 5s)")
         
         elif system == "Linux":
-            # notify-send con timeout de 5000ms (5 segundos)
-            # Usar expire-time en lugar de -t para mejor compatibilidad
+            # notify-send formato exacto: notify-send "título" "mensaje"
             try:
-                subprocess.run(
-                    ["notify-send", "-u", "critical", "-t", "5000", title, message],
-                    timeout=5
-                )
-                log_message(f"[📢] Notificación Linux enviada (timeout 5s)")
+                cmd = f'notify-send "{title}" "{message}"'
+                subprocess.run(cmd, shell=True, timeout=5)
+                log_message(f"[📢] Notificación Linux enviada")
             except Exception as e:
                 log_message(f"[!] Error con notify-send: {e}")
-                # Fallback: intentar sin timeout
-                try:
-                    subprocess.run(
-                        ["notify-send", "-u", "critical", title, message],
-                        timeout=5
-                    )
-                    log_message(f"[📢] Notificación Linux (sin timeout explícito)")
-                except:
-                    log_message(f"[!] No se pudo mostrar notificación")
         
         elif system == "Windows":
             # Toast notification con duración corta en Windows
@@ -121,30 +109,32 @@ def speak_message(message, repetitions=1):
         
         elif system == "Linux":
             for i in range(repetitions):
+                # Intentar pico2wave primero (mejor calidad)
                 try:
-                    # Usar espeak-ng con mbrola para mejor calidad
+                    cmd = f'pico2wave -l=es-ES -w /tmp/msg.wav "{message}" && aplay /tmp/msg.wav && rm -f /tmp/msg.wav'
+                    subprocess.run(cmd, shell=True, timeout=30)
+                    log_message(f"[🔊] Linux pico2wave: '{message}' ({i+1}/{repetitions})")
+                    continue
+                except Exception:
+                    pass
+                
+                # Fallback a espeak-ng
+                try:
                     subprocess.run(
-                        ["espeak-ng", "-v", "es+mbrola-es1", "-a", "200", message],
-                        timeout=30,
-                        check=True
+                        ["espeak-ng", "-v", "es", "-s", "150", "-p", "45", "-a", "200", message],
+                        timeout=30
                     )
-                    log_message(f"[🔊] Linux espeak-ng+mbrola: '{message}' ({i+1}/{repetitions})")
-                except (FileNotFoundError, subprocess.CalledProcessError):
-                    # Fallback sin mbrola
+                    log_message(f"[🔊] Linux espeak-ng: '{message}' ({i+1}/{repetitions})")
+                except FileNotFoundError:
+                    # Último recurso: espeak antiguo
                     try:
-                        subprocess.run(
-                            ["espeak-ng", "-v", "es", "-s", "150", "-p", "45", "-a", "200", message],
-
-                            timeout=30
-                        )
-                        log_message(f"[🔊] Linux espeak-ng: '{message}' ({i+1}/{repetitions})")
-                    except FileNotFoundError:
-                        # Último recurso: espeak antiguo
                         subprocess.run(
                             ["espeak", "-v", "es", message],
                             timeout=30
                         )
                         log_message(f"[🔊] Linux espeak: '{message}' ({i+1}/{repetitions})")
+                    except Exception:
+                        log_message(f"[❌] No hay TTS disponible en Linux")
         
         elif system == "Windows":
             ps_script = f"""Add-Type –AssemblyName System.Speech
