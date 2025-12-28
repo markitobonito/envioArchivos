@@ -24,7 +24,7 @@
       "fd7a:115c:a1e0::3f35:3a1c/128"
     ],
     "Addrs": [
-      "38.253.158.7:59234",
+      "38.253.158.7:58576",
       "192.168.18.58:64737"
     ],
     "CurAddr": "",
@@ -79,7 +79,7 @@
     "KeyExpiry": "2026-06-20T00:51:21Z"
   },
   "Health": [
-    "You are logged out. The last login error was: invalid key: API key does not exist"
+    "You are logged out."
   ],
   "MagicDNSSuffix": "tailfb58ed.ts.net",
   "CurrentTailnet": {
@@ -111,7 +111,7 @@
       "RxBytes": 0,
       "TxBytes": 0,
       "Created": "2025-12-22T01:59:03.947044984Z",
-      "LastWrite": "2025-12-24T16:01:25.750090083-05:00",
+      "LastWrite": "2025-12-24T16:21:57.52149475-05:00",
       "LastSeen": "2025-12-27T20:00:45.1Z",
       "LastHandshake": "0001-01-01T00:00:00Z",
       "Online": false,

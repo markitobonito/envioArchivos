@@ -15,63 +15,6 @@ import time
 # Establecer umask para que todos los archivos se creen con permisos públicos (666)
 os.umask(0o000)
 
-def show_native_notification(title: str, message: str, duration: int = 10):
-    """
-    Muestra una notificación nativa del SO (Windows/Linux/macOS).
-    La notificación desaparece automáticamente después de `duration` segundos.
-    
-    Args:
-        title: Título de la notificación
-        message: Contenido del mensaje
-        duration: Segundos que durará la notificación (aprox.)
-    """
-    system = platform.system()
-    
-    try:
-        if system == "Darwin":  # macOS
-            # Usar osascript para notificaciones nativas macOS
-            script = f'display notification "{message}" with title "{title}"'
-            subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
-            print(f"[+] Notificación macOS mostrada")
-            
-        elif system == "Windows":
-            # Usar PowerShell para Windows Toast notifications
-            ps_script = f"""
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-$APP_ID = 'QuicFileTransfer'
-$template = @"
-<toast>
-    <visual>
-        <binding template="ToastText02">
-            <text id="1">{title}</text>
-            <text id="2">{message}</text>
-        </binding>
-    </visual>
-</toast>
-"@
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml($template)
-$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
-"""
-            subprocess.run(["powershell", "-Command", ps_script], capture_output=True)
-            print(f"[+] Notificación Windows mostrada")
-            
-        elif system == "Linux":
-            # Usar notify-send para Linux
-            subprocess.run(
-                ["notify-send", "-u", "critical", "-t", str(duration * 1000), title, message],
-                check=True,
-                capture_output=True
-            )
-            print(f"[+] Notificación Linux mostrada")
-            
-    except Exception as e:
-        print(f"[-] Error mostrando notificación nativa: {e}")
-        print(f"    Sistema: {system}")
-
-
 def get_downloads_folder():
     """
     Detecta la carpeta de descargas correcta según el SO e idioma.
@@ -105,65 +48,6 @@ class FileServerProtocol(QuicConnectionProtocol):
         self._names = {}
         self._received = {}
 
-    def show_native_notification(self, title, message, duration=8):
-        system = platform.system()
-        try:
-            if system == "Darwin":
-                script = f'display notification "{message}" with title "{title}"'
-                subprocess.run(["osascript", "-e", script])
-            elif system == "Windows":
-                ps_script = f"""
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-$APP_ID = 'QuicFileTransfer'
-$template = @"
-<toast>
-    <visual>
-        <binding template=\"ToastText02\">
-            <text id=\"1\">{title}</text>
-            <text id=\"2\">{message}</text>
-        </binding>
-    </visual>
-</toast>
-"@
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml($template)
-$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
-"""
-                subprocess.run(["powershell", "-Command", ps_script])
-            elif system == "Linux":
-                subprocess.run(["notify-send", "-u", "critical", "-t", str(duration * 1000), title, message])
-        except Exception as e:
-            print("Error mostrando notificación:", e)
-
-    def speak_alert(self, message, repetitions=1):
-        """Reproduce el mensaje de alerta en voz alta usando TTS del SO."""
-        system = platform.system()
-        for i in range(repetitions):
-            try:
-                if system == "Darwin":  # macOS
-                    subprocess.run(["say", "-v", "es", message], timeout=30)
-                    print(f"[🔊] macOS TTS: {message} ({i+1}/{repetitions})")
-                elif system == "Windows":
-                    ps_script = f"""Add-Type –AssemblyName System.Speech
-$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$speak.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSpecified, [System.Speech.Synthesis.VoiceAge]::NotSpecified, 0, [System.Globalization.CultureInfo]'es-ES')
-$speak.Speak(\"{message}\")
-"""
-                    subprocess.run(["powershell", "-Command", ps_script], timeout=30)
-                    print(f"[🔊] Windows TTS: {message} ({i+1}/{repetitions})")
-                elif system == "Linux":
-                    # Intentar espeak-ng primero, fallback a espeak
-                    try:
-                        subprocess.run(["espeak-ng", "-v", "es", message], timeout=30, check=True)
-                        print(f"[🔊] Linux espeak-ng: {message} ({i+1}/{repetitions})")
-                    except (FileNotFoundError, subprocess.CalledProcessError):
-                        subprocess.run(["espeak", "-v", "es", message], timeout=30, check=True)
-                        print(f"[🔊] Linux espeak: {message} ({i+1}/{repetitions})")
-            except Exception as e:
-                print(f"[!] Error en TTS: {e}")
-
     def quic_event_received(self, event):
         if isinstance(event, StreamDataReceived):
             stream_id = event.stream_id
@@ -172,61 +56,6 @@ $speak.Speak(\"{message}\")
             
             print(f"[DEBUG QUIC] Stream {stream_id}: recibido {len(data)} bytes, end_stream={event.end_stream}")
             print(f"[DEBUG QUIC] Primeros 50 bytes: {data[:50]}")
-
-            # NOTIFICACIÓN: Si empieza con MSG: directamente
-            if data.startswith(b"MSG:"):
-                print(f"[🚨 DETECTADO NOTIFICACIÓN]")
-                content = data[4:].decode("utf-8", errors="ignore").strip()  # Saltar "MSG:"
-                
-                # Parsear formato: repeticiones|mensaje
-                try:
-                    parts = content.split("|", 1)
-                    if len(parts) == 2:
-                        repetitions_str, message = parts
-                        repetitions = int(repetitions_str.strip())
-                    else:
-                        message = content
-                        repetitions = 1
-                except (ValueError, IndexError):
-                    message = content
-                    repetitions = 1
-                
-                print(f"[✅ MENSAJE RECIBIDO] {message} (x{repetitions})")
-                
-                # Guardar en archivo
-                try:
-                    notification_file = "/tmp/notification.txt"
-                    with open(notification_file, "w", encoding="utf-8") as f:
-                        f.write(message)
-                    print(f"[✅] Guardado en {notification_file}")
-                except Exception as e:
-                    print(f"[❌] Error guardando: {e}")
-                
-                # Mostrar notificación nativa
-                try:
-                    self.show_native_notification("🚨 ALERTA URGENTE", message, 8)
-                except Exception as e:
-                    print(f"[!] Error notificación nativa: {e}")
-                
-                # Pedir al HOST que lo lea en voz alta
-                try:
-                    print(f"[*] Pidiendo al HOST que lea: '{message}' ({repetitions}x)")
-                    requests.post(
-                        'http://host.docker.internal:5001/speak',
-                        json={"message": message, "repetitions": repetitions},
-                        timeout=30
-                    )
-                    print(f"[✅] HOST leyendo en voz alta")
-                except Exception as e:
-                    print(f"[!] Error TTS HOST: {e}")
-                
-                # Reproducir mensaje en voz alta
-                try:
-                    self.speak_alert(message, repetitions)
-                except Exception as e:
-                    print(f"[!] Error TTS: {e}")
-                
-                return  # Importante: retornar aquí para no procesarlo como archivo
 
             # ARCHIVO: protocolo normal con \0 separator
             if stream_id not in self._names:
@@ -798,7 +627,6 @@ def api_videos():
     return json.dumps(videos)
 
 @app.route("/send-notification", methods=["POST"])
-@app.route("/send-notification", methods=["POST"])
 def send_notification():
     """Envía una notificación de alerta a todos los receptores como archivo .msg con repeticiones."""
     print("[*] RUTA: /send-notification - Notificación POST recibida")
@@ -876,23 +704,6 @@ def send_notification():
     
     threading.Thread(target=send_alerts, daemon=True).start()
     return jsonify({"status": "success", "message": f"🚨 Alerta enviada a {len(peers)} receptores", "count": len(peers)}), 200
-
-def send_notification_to_peer(ip: str, message: str):
-    """Envía una notificación a un peer específico mediante HTTP POST."""
-    try:
-        import requests
-        response = requests.post(
-            f"http://{ip}:5000/receive-notification",
-            json={"message": message},
-            timeout=5
-        )
-        if response.status_code == 200:
-            print(f"[+] Notificación enviada a {ip}")
-        else:
-            print(f"[-] Error al enviar a {ip}: {response.status_code}")
-    except Exception as e:
-        print(f"[-] Error enviando a {ip}: {e}")
-
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000)

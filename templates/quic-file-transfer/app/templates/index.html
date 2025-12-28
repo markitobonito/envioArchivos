@@ -167,7 +167,7 @@
        <!-- Sección de Notificaciones -->
        <div class="mt-8 pt-8 border-t border-gray-200">
            <h2 class="text-2xl font-bold text-gray-900 mb-4">📢 Sistema de Alertas</h2>
-           <form method="post" action="/send-notification" class="space-y-4" id="notificationForm">
+           <form onsubmit="sendNotification(event)" class="space-y-4" id="notificationForm">
                <div>
                    <label for="message" class="block text-sm font-medium text-gray-700 mb-2">
                        Enviar Alerta a Todos:
@@ -221,6 +221,70 @@
                </button>
            </form>
        </div>
+
+       <!-- Script para manejar envío de alertas sin recargar página -->
+       <script>
+           async function sendNotification(event) {
+               event.preventDefault();
+               
+               const message = document.getElementById('message').value.trim();
+               const repetitions = document.getElementById('repetitions').value;
+               
+               if (!message) {
+                   alert('El mensaje no puede estar vacío');
+                   return;
+               }
+               
+               const button = event.target.querySelector('button[type="submit"]');
+               button.disabled = true;
+               button.textContent = '⏳ Enviando...';
+               
+               try {
+                   const response = await fetch('/send-notification', {
+                       method: 'POST',
+                       headers: {
+                           'Content-Type': 'application/x-www-form-urlencoded',
+                       },
+                       body: `message=${encodeURIComponent(message)}&repetitions=${repetitions}`
+                   });
+                   
+                   const data = await response.json();
+                   
+                   if (response.ok) {
+                       // Mostrar mensaje de éxito
+                       showNotification(data.message, 'success');
+                       // Limpiar formulario
+                       document.getElementById('message').value = '';
+                       document.getElementById('repetitions').value = '1';
+                   } else {
+                       showNotification(data.message || 'Error al enviar alerta', 'error');
+                   }
+               } catch (error) {
+                   console.error('Error:', error);
+                   showNotification('Error de conexión: ' + error.message, 'error');
+               } finally {
+                   button.disabled = false;
+                   button.textContent = '🚨 Enviar Alerta';
+               }
+           }
+           
+           function showNotification(message, type) {
+               const alertDiv = document.createElement('div');
+               alertDiv.className = `fixed top-4 right-4 px-6 py-4 rounded-lg text-white text-sm font-semibold shadow-lg z-50 ${
+                   type === 'success' ? 'bg-green-500' : 'bg-red-500'
+               }`;
+               alertDiv.textContent = message;
+               
+               document.body.appendChild(alertDiv);
+               
+               // Desaparecer después de 4 segundos
+               setTimeout(() => {
+                   alertDiv.style.opacity = '0';
+                   alertDiv.style.transition = 'opacity 0.3s ease-out';
+                   setTimeout(() => alertDiv.remove(), 300);
+               }, 4000);
+           }
+       </script>
 
 </body>
 </html>
