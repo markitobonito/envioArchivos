@@ -63,17 +63,55 @@ if exist "%USERPROFILE%\Descargas" (
 )
 
 REM Attempt to generate tailscale_status.json from the host if tailscale CLI is available
+REM But first, check if Tailscale is installed; if not, install it automatically
 where tailscale >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-	echo Found tailscale CLI on host — generating status JSON for container to read.
-	tailscale status --json > "templates\quic-file-transfer\app\tailscale_status.json" 2> "templates\quic-file-transfer\app\tailscale_status.err"
+if %ERRORLEVEL% NEQ 0 (
+	echo.
+	echo ⚠️  Tailscale not found. Attempting to install...
+	echo Verificando winget...
+	where winget >nul 2>&1
 	if %ERRORLEVEL% NEQ 0 (
-		echo WARNING: tailscale status command failed; see templates\quic-file-transfer\app\tailscale_status.err
+		echo ❌ Error: winget no encontrado. Necesitas Windows 11+ o instalar winget manualmente.
+		echo Descarga desde: https://learn.microsoft.com/en-us/windows/package-manager/winget/
+		pause
+		exit /b 1
+	)
+	echo Instalando Tailscale con winget...
+	winget install Tailscale.Tailscale -e --silent
+	if %ERRORLEVEL% NEQ 0 (
+		echo ⚠️  Error instalando Tailscale con winget. Continuando de todas formas...
 	) else (
-		echo Wrote tailscale status to templates\quic-file-transfer\app\tailscale_status.json
+		echo ✅ Tailscale instalado correctamente
+		timeout /t 3 /nobreak >nul
 	)
 ) else (
-	echo tailscale CLI not found on host — container will attempt to use Tailscale if available inside container
+	echo ✅ Tailscale ya está instalado
+)
+
+REM Conectar Tailscale con auth-key automáticamente
+echo.
+echo Conectando Tailscale con credenciales...
+if "!TAILSCALE_AUTHKEY!" neq "" (
+	echo Usando TAILSCALE_AUTHKEY del .env
+	tailscale up --authkey=!TAILSCALE_AUTHKEY! --accept-routes --accept-dns --quiet
+	if %ERRORLEVEL% EQU 0 (
+		echo ✅ Tailscale conectado exitosamente
+	) else (
+		echo ⚠️  Tailscale ya estaba corriendo o error en conexión
+	)
+	timeout /t 2 /nobreak >nul
+) else (
+	echo ⚠️  TAILSCALE_AUTHKEY no está definida en .env
+	echo Asegúrate de configurar .env correctamente
+)
+
+REM Generate tailscale_status.json from the host
+echo Generando tailscale_status.json...
+tailscale status --json > "templates\quic-file-transfer\app\tailscale_status.json" 2> "templates\quic-file-transfer\app\tailscale_status.err"
+if %ERRORLEVEL% EQU 0 (
+	echo ✅ Status JSON generado correctamente
+) else (
+	echo ⚠️  Error generando JSON (ver .err file)
 )
 
 echo.
@@ -93,9 +131,25 @@ echo.
 echo Waiting a few seconds for services to initialize...
 timeout /t 3 /nobreak >nul
 
-REM Iniciar los monitores de HOST (Tailscale API, Alertas, Videos)
-echo Ejecutando: start-monitors.bat
-call "%~dp0start-monitors.bat"
+REM Iniciar los 3 monitores del HOST directamente (sin archivo separado)
+echo.
+echo 🔌 Iniciando servicio API de Tailscale (puerto 5001)...
+start "Tailscale API" /min python3 "%~dp0tailscale-api.py"
+timeout /t 2 /nobreak >nul
+echo ✓ Servicio API activo
+echo.
+
+echo 📢 Iniciando monitor de alertas .msg...
+start "Monitor de Alertas" /min python3 "%~dp0msg-monitor.py"
+timeout /t 2 /nobreak >nul
+echo ✓ Monitor de alertas activo
+echo.
+
+echo 🎬 Iniciando monitor de videos...
+start "Monitor de Videos" /min python3 "%~dp0video-monitor.py"
+timeout /t 2 /nobreak >nul
+echo ✓ Monitor de videos activo
+echo.
 
 echo Done! Opening http://localhost:8080 in your browser (if available)...
 echo.
