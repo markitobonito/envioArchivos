@@ -79,6 +79,7 @@
     "KeyExpiry": "2026-06-20T00:51:21Z"
   },
   "Health": [
+    "You are logged out.",
     "Unable to connect to the Tailscale coordination server to synchronize the state of your tailnet. Peer reachability might degrade over time."
   ],
   "MagicDNSSuffix": "tailfb58ed.ts.net",
@@ -111,7 +112,7 @@
       "RxBytes": 0,
       "TxBytes": 0,
       "Created": "2025-12-22T01:59:03.947044984Z",
-      "LastWrite": "2025-12-24T18:37:57.516478416-05:00",
+      "LastWrite": "2025-12-24T19:15:05.830576625-05:00",
       "LastSeen": "2025-12-27T20:00:45.1Z",
       "LastHandshake": "0001-01-01T00:00:00Z",
       "Online": false,

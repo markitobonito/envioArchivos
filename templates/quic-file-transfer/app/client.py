@@ -587,6 +587,12 @@ def watch_video(filename):
                 // Si autoplay falla, mostrar mensaje
                 showFullscreenPrompt();
             }});
+            
+            // Cerrar automáticamente cuando termine el video
+            video.addEventListener('ended', () => {{
+                console.log('Video terminado, cerrando ventana...');
+                window.close();
+            }});
         </script>
     </body>
     </html>
