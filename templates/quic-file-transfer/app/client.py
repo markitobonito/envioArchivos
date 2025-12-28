@@ -4,13 +4,13 @@ import asyncio
 import threading
 import subprocess
 import requests
-from flask import Flask, request, redirect, render_template, flash
+import time
+import uuid
+from flask import Flask, request, redirect, render_template, flash, jsonify
 from aioquic.asyncio import connect, serve, QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import StreamDataReceived
 import socket
-import platform
-import time
 
 # Establecer umask para que todos los archivos se creen con permisos públicos (666)
 os.umask(0o000)
@@ -302,8 +302,8 @@ def index():
             return redirect("/")
         
         # Obtener opciones de programación del video
-        video_action = request.form.get("videoAction", "silent")  # now, schedule, silent
-        video_time = request.form.get("videoTime", "")
+        video_action = request.form.get("videoAction", "silent").strip().lower()  # now, schedule, silent
+        video_time = request.form.get("videoTime", "").strip()
         video_days_list = request.form.getlist("videoDays")  # getlist para múltiples checkboxes
         video_days = ",".join(video_days_list) if video_days_list else ""
         
@@ -654,8 +654,6 @@ def send_notification():
         repetitions = 1
     
     # Crear archivo .msg temporal con formato: repeticiones|mensaje
-    import time
-    import uuid
     temp_filename = f"ALERTA_{uuid.uuid4().hex[:8]}_{int(time.time())}.msg"
     temp_filepath = os.path.join("/tmp", temp_filename)
     
