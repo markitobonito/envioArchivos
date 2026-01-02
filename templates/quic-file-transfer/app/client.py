@@ -154,11 +154,7 @@ config_client.max_stream_data = 1024 * 1024 * 1024
 
 def get_tailscale_ips():
     """
-    Lógica mejorada:
-    1. Lee tailscale_status.json
-    2. Si hay peers offline → hace ping a esos peers (para activarlos)
-    3. Relee el JSON
-    4. Retorna solo los que estén online
+    Obtiene peers desde JSON local o API si es necesario
     """
     status_path = "/app/tailscale_status.json"
     
@@ -166,55 +162,58 @@ def get_tailscale_ips():
         print("[!] No hay JSON de Tailscale", flush=True)
         return []
     
-    try:
-        with open(status_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"[ERROR] {e}", flush=True)
+    def read_json():
+        try:
+            with open(status_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[ERROR] Leyendo JSON: {e}", flush=True)
+            return None
+    
+    data = read_json()
+    if not data:
         return []
     
-    # Paso 1: Identificar peers ALCANZABLES (InMagicSock o Online)
-    offline_peers = []
-    for ip, info in data.get("Peer", {}).items():
-        # Un peer es alcanzable si está en MagicSock O si está Online
-        is_reachable = info.get("InMagicSock", False) or info.get("Online", False)
-        if not is_reachable:
-            ips = info.get("TailscaleIPs", [])
-            if ips:
-                offline_peers.append(ips[0])
-                print(f"[!] Peer offline: {info.get('HostName', '?')} ({ips[0]})", flush=True)
+    # IMPORTANTE: Detectar si Tailscale está deslogueado
+    health = data.get("Health", [])
+    is_logged_out = any("logged out" in str(h).lower() for h in health)
     
-    # Paso 2: Si hay offline, regenerar JSON desde tailscale-api.py (HOST)
-    if offline_peers:
-        print(f"[*] Regenerando status JSON desde HOST API...", flush=True)
+    # Si está deslogueado, SIEMPRE regenerar desde API
+    if is_logged_out:
+        print(f"[!] Tailscale DESLOGUEADO - Regenerando desde API REST...", flush=True)
         try:
-            # Llamar a API del HOST para regenerar JSON (tailscale-api.py en puerto 5001)
-            response = requests.post('http://host.docker.internal:5001/regenerate', timeout=5)
+            response = requests.post('http://host.docker.internal:5001/regenerate', timeout=10)
             if response.status_code == 200:
-                print(f"[✓] JSON regenerado via API", flush=True)
+                print(f"[✓] JSON regenerado desde API", flush=True)
                 time.sleep(1)
-                # Releer el JSON actualizado
-                with open(status_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                print("[✓] JSON actualizado", flush=True)
+                data = read_json()
+                if not data:
+                    return []
             else:
-                print(f"[!] Error: API retornó {response.status_code}", flush=True)
+                print(f"[!] API error {response.status_code}", flush=True)
         except Exception as e:
-            print(f"[!] Error regenerando JSON: {e}", flush=True)
+            print(f"[!] Error regenerando: {e}", flush=True)
     
-    # Paso 4: Extraer peers que ahora están alcanzables (InMagicSock o Online)
+    # Extraer peers alcanzables
     self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
     peers = []
-    for info in data.get("Peer", {}).values():
-        # Un peer es válido si está en MagicSock OR Online
-        is_reachable = info.get("InMagicSock", False) or info.get("Online", False)
-        if is_reachable:
-            ips = info.get("TailscaleIPs", [])
-            if ips and ips[0] not in self_ips:
-                peers.append(ips[0])
-                print(f"[+] Peer online: {info.get('HostName', '?')} ({ips[0]})", flush=True)
     
-    print(f"[✓] Total peers disponibles: {len(peers)}", flush=True)
+    for info in data.get("Peer", {}).values():
+        ips = info.get("TailscaleIPs", [])
+        if not ips or ips[0] in self_ips:
+            continue
+        
+        ip = ips[0]
+        hostname = info.get("HostName", "?")
+        is_online = info.get("Online", False)
+        is_in_magicsock = info.get("InMagicSock", False)
+        
+        # Incluir peers alcanzables
+        if is_online or is_in_magicsock:
+            peers.append(ip)
+            print(f"[✓] Peer: {hostname} ({ip})", flush=True)
+    
+    print(f"[✓] Total peers: {len(peers)}", flush=True)
     return peers
 
 async def send_file_to_ip(ip: str, filepath: str, filename: str = None):

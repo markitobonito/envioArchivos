@@ -242,28 +242,69 @@ fi
 # 3) Verificar si ya estamos conectados a Tailscale
 echo ""
 echo "Verificando conexión a Tailscale..."
+
+# Función para conectar con reintentos
+connect_tailscale_with_retry() {
+  local max_attempts=5
+  local attempt=1
+  
+  while [ $attempt -le $max_attempts ]; do
+    echo "[Intento $attempt/$max_attempts] Conectando a Tailscale..."
+    
+    # Hacer logout limpio primero (por si estaba deslogueado)
+    sudo tailscale logout 2>/dev/null || true
+    sleep 2
+    
+    # Intentar conectar
+    if sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
+      echo "✅ Tailscale conectado exitosamente"
+      return 0
+    fi
+    
+    attempt=$((attempt + 1))
+    if [ $attempt -le $max_attempts ]; then
+      echo "⚠️  Intento fallido, esperando 5 segundos..."
+      sleep 5
+    fi
+  done
+  
+  return 1
+}
+
 TAILSCALE_STATUS=$(tailscale status 2>&1 || echo "")
 
 if echo "$TAILSCALE_STATUS" | grep -q "Online"; then
   echo "✅ Tailscale ya está conectado"
   HOST_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
   echo "   IP Tailscale del host: $HOST_TAILSCALE_IP"
+elif echo "$TAILSCALE_STATUS" | grep -q "logged out\|invalid key"; then
+  echo "⚠️  Tailscale deslogueado. Reconectando con authkey..."
+  
+  if connect_tailscale_with_retry; then
+    sleep 2
+    HOST_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
+    echo "   IP Tailscale del host: $HOST_TAILSCALE_IP"
+  else
+    echo "❌ Error: No se pudo conectar a Tailscale después de 5 intentos"
+    echo "   Verifica que tu TAILSCALE_AUTHKEY sea válido y no esté expirado"
+    echo ""
+    echo "   Para generar uno nuevo:"
+    echo "   - https://login.tailscale.com/admin/settings/keys"
+    echo ""
+    echo "   Para debugging:"
+    echo "   - tailscale status"
+    echo "   - sudo tailscale logs"
+    exit 1
+  fi
 else
   echo "⚠️  Tailscale no conectado. Conectando con authkey..."
   
-  # Intentar conectar (sin usar sudo porque el daemon ya corre)
-  if sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes --accept-dns 2>&1; then
-    echo "✅ Tailscale conectado exitosamente"
+  if connect_tailscale_with_retry; then
     sleep 2
     HOST_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
     echo "   IP Tailscale del host: $HOST_TAILSCALE_IP"
   else
     echo "❌ Error: No se pudo conectar a Tailscale"
-    echo "   Verifica que tu TAILSCALE_AUTHKEY sea válido"
-    echo ""
-    echo "   Para debugging:"
-    echo "   - tailscale status"
-    echo "   - tailscale logs"
     exit 1
   fi
 fi
@@ -308,6 +349,20 @@ echo ""
 echo "Generando tailscale_status.json desde host..."
 tailscale status --json > "$SCRIPT_DIR/templates/quic-file-transfer/app/tailscale_status.json" 2>/dev/null || true
 echo "✅ Status generado"
+
+# Iniciar el monitor de Tailscale (para reconexiones automáticas)
+echo ""
+echo "Iniciando monitor de Tailscale (reconexión automática)..."
+
+# Matar proceso viejo si existe
+pkill -f "tailscale-monitor.py" 2>/dev/null || true
+sleep 1
+
+# Iniciar nuevo monitor
+python3 "$SCRIPT_DIR/tailscale-monitor.py" > /tmp/tailscale-monitor.log 2>&1 &
+TAILSCALE_MONITOR_PID=$!
+echo "✅ Monitor iniciado (PID: $TAILSCALE_MONITOR_PID)"
+sleep 2  # Dar tiempo a que inicie
 
 # Iniciar el servicio de API de Tailscale en background
 echo ""

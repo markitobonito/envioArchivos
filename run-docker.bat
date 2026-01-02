@@ -88,21 +88,41 @@ if %ERRORLEVEL% NEQ 0 (
 	echo ✅ Tailscale ya está instalado
 )
 
-REM Conectar Tailscale con auth-key automáticamente
+REM Conectar Tailscale con auth-key automáticamente CON REINTENTOS
 echo.
-echo Conectando Tailscale con credenciales...
+echo 🔐 Conectando Tailscale con credenciales...
 if "!TAILSCALE_AUTHKEY!" neq "" (
 	echo Usando TAILSCALE_AUTHKEY del .env
+	
+	REM Intentar hasta 3 veces
+	set RETRY_COUNT=0
+	:tailscale_retry
+	tailscale logout --accept-risk=lose-ssh-access >nul 2>&1
+	timeout /t 2 /nobreak >nul
+	
 	tailscale up --authkey=!TAILSCALE_AUTHKEY! --accept-routes --accept-dns --quiet
 	if %ERRORLEVEL% EQU 0 (
 		echo ✅ Tailscale conectado exitosamente
+		goto tailscale_done
 	) else (
-		echo ⚠️  Tailscale ya estaba corriendo o error en conexión
+		set /a RETRY_COUNT=!RETRY_COUNT!+1
+		if !RETRY_COUNT! LSS 3 (
+			echo ⚠️  Intento !RETRY_COUNT!/3 fallido, reintentando...
+			timeout /t 3 /nobreak >nul
+			goto tailscale_retry
+		) else (
+			echo ❌ Error: No se pudo conectar a Tailscale después de 3 intentos
+			echo    Verifica que tu TAILSCALE_AUTHKEY sea válido
+			echo    Para generar uno nuevo: https://login.tailscale.com/admin/settings/keys
+		)
 	)
+	:tailscale_done
 	timeout /t 2 /nobreak >nul
 ) else (
-	echo ⚠️  TAILSCALE_AUTHKEY no está definida en .env
-	echo Asegúrate de configurar .env correctamente
+	echo ❌ TAILSCALE_AUTHKEY no está definida en .env
+	echo    Asegúrate de configurar .env correctamente
+	pause
+	exit /b 1
 )
 
 REM Generate tailscale_status.json from the host
@@ -131,8 +151,14 @@ echo.
 echo Waiting a few seconds for services to initialize...
 timeout /t 3 /nobreak >nul
 
-REM Iniciar los 3 monitores del HOST directamente (sin archivo separado)
+REM Iniciar los monitores del HOST
 echo.
+echo 🔄 Iniciando monitor de Tailscale (reconexión automática)...
+start "Tailscale Monitor" /min python3 "%~dp0tailscale-monitor.py"
+timeout /t 2 /nobreak >nul
+echo ✓ Monitor de Tailscale activo
+echo.
+
 echo 🔌 Iniciando servicio API de Tailscale (puerto 5001)...
 start "Tailscale API" /min python3 "%~dp0tailscale-api.py"
 timeout /t 2 /nobreak >nul

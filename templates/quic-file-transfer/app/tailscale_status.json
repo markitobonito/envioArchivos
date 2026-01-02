@@ -10,7 +10,7 @@
   ],
   "Self": {
     "ID": "n9YCAASGKK11CNTRL",
-    "PublicKey": "nodekey:0967af0f2e9bbd2a5e7387a2e5e9e7340dc86a258ed50c26a51df5743ffd3a1b",
+    "PublicKey": "nodekey:2546a104630afaf35fa793d39af0004ea0a5fd987dc90c170d3b9117e65e965f",
     "HostName": "MacBook-Air-de-markito",
     "DNSName": "macbook-air-de-markito.tailfb58ed.ts.net.",
     "OS": "macOS",
@@ -24,8 +24,8 @@
       "fd7a:115c:a1e0::3f35:3a1c/128"
     ],
     "Addrs": [
-      "38.253.158.7:55959",
-      "192.168.18.58:64737"
+      "38.253.158.7:25407",
+      "192.168.18.58:51539"
     ],
     "CurAddr": "",
     "Relay": "mia",
@@ -36,7 +36,7 @@
     "LastWrite": "0001-01-01T00:00:00Z",
     "LastSeen": "0001-01-01T00:00:00Z",
     "LastHandshake": "0001-01-01T00:00:00Z",
-    "Online": false,
+    "Online": true,
     "ExitNode": false,
     "ExitNodeOption": false,
     "Active": false,
@@ -76,12 +76,9 @@
     "InNetworkMap": true,
     "InMagicSock": false,
     "InEngine": false,
-    "KeyExpiry": "2026-06-20T00:51:21Z"
+    "KeyExpiry": "2026-06-30T18:20:49Z"
   },
-  "Health": [
-    "You are logged out.",
-    "Unable to connect to the Tailscale coordination server to synchronize the state of your tailnet. Peer reachability might degrade over time."
-  ],
+  "Health": [],
   "MagicDNSSuffix": "tailfb58ed.ts.net",
   "CurrentTailnet": {
     "Name": "nash2207@hotmail.com",
@@ -90,6 +87,46 @@
   },
   "CertDomains": null,
   "Peer": {
+    "nodekey:2d7276e956dfb27bb3c41f47d9e2a1c4d26a6f4d3d78fd135fd7c07da357ee21": {
+      "ID": "ny1NR1JcnY11CNTRL",
+      "PublicKey": "nodekey:2d7276e956dfb27bb3c41f47d9e2a1c4d26a6f4d3d78fd135fd7c07da357ee21",
+      "HostName": "localhost",
+      "DNSName": "zte-z2450.tailfb58ed.ts.net.",
+      "OS": "android",
+      "UserID": 8482722947360927,
+      "TailscaleIPs": [
+        "100.87.238.34",
+        "fd7a:115c:a1e0::a335:ee22"
+      ],
+      "AllowedIPs": [
+        "100.87.238.34/32",
+        "fd7a:115c:a1e0::a335:ee22/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "mia",
+      "PeerRelay": "",
+      "RxBytes": 13044,
+      "TxBytes": 32196,
+      "Created": "2025-12-31T04:24:52.2687458Z",
+      "LastWrite": "2026-01-01T14:02:53.024932208-05:00",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "2026-01-02T00:20:20.323734-05:00",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.87.238.34:1",
+        "http://[fd7a:115c:a1e0::a335:ee22]:1"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": true,
+      "KeyExpiry": "2026-06-29T04:24:52Z"
+    },
     "nodekey:94045d837bab49db8495c37271b66ddd474542155680f985963cc84bf1985c02": {
       "ID": "nWdg1WfDcr11CNTRL",
       "PublicKey": "nodekey:94045d837bab49db8495c37271b66ddd474542155680f985963cc84bf1985c02",
@@ -109,13 +146,13 @@
       "CurAddr": "",
       "Relay": "mia",
       "PeerRelay": "",
-      "RxBytes": 0,
-      "TxBytes": 0,
+      "RxBytes": 33200,
+      "TxBytes": 31732,
       "Created": "2025-12-22T01:59:03.947044984Z",
-      "LastWrite": "2025-12-24T19:15:05.830576625-05:00",
-      "LastSeen": "2025-12-27T20:00:45.1Z",
-      "LastHandshake": "0001-01-01T00:00:00Z",
-      "Online": false,
+      "LastWrite": "2026-01-01T13:58:14.310018833-05:00",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "2026-01-02T00:16:44.201239-05:00",
+      "Online": true,
       "ExitNode": false,
       "ExitNodeOption": false,
       "Active": false,
@@ -123,11 +160,11 @@
         "http://100.88.92.3:58872",
         "http://[fd7a:115c:a1e0::f135:5c03]:48523"
       ],
-      "TaildropTarget": 5,
+      "TaildropTarget": 1,
       "NoFileSharingReason": "",
       "InNetworkMap": true,
       "InMagicSock": true,
-      "InEngine": false,
+      "InEngine": true,
       "KeyExpiry": "2026-06-20T01:59:03Z"
     }
   },
