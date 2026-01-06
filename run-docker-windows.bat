@@ -13,9 +13,9 @@ echo. > "%LOG_FILE%"
 echo [%date% %time%] ===== SCRIPT START ===== >> "%LOG_FILE%"
 
 echo.
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo  QUIC File Transfer System - Windows Setup
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo.
 echo Log file: %LOG_FILE%
 echo.
@@ -50,11 +50,11 @@ if errorlevel 1 (
         
         REM WSL commands don't work, features not enabled
         echo.
-        echo ════════════════════════════════════════════════════════════
+        echo ============================================================
         echo  WSL2 INSTALLATION REQUIRED
-        echo ════════════════════════════════════════════════════════════
+        echo ============================================================
         echo.
-        echo [×] WSL2 features are NOT activated in your system
+        echo [X] WSL2 features are NOT activated in your system
         echo [%date% %time%] WSL2 features NOT activated - enabling... >> "%LOG_FILE%"
         echo.
         echo This script will enable WSL2 features. IMPORTANT:
@@ -63,6 +63,7 @@ if errorlevel 1 (
         echo  3. You will need to RESTART your computer
         echo  4. After restart, run this script again
         echo.
+        echo Press any key to continue...
         pause
         
         REM Enable WSL2 features
@@ -72,7 +73,7 @@ if errorlevel 1 (
         powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
         
         if errorlevel 1 (
-            echo [✗] Failed to enable WSL feature
+            echo [X] Failed to enable WSL feature
             echo [%date% %time%] ERROR: Failed to enable WSL feature >> "%LOG_FILE%"
             echo Please enable manually:
             echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
@@ -82,7 +83,7 @@ if errorlevel 1 (
             exit /b 1
         )
         
-        echo [✓] WSL feature enabled
+        echo [OK] WSL feature enabled
         echo [%date% %time%] WSL feature enabled successfully >> "%LOG_FILE%"
         echo.
         echo [*] Enabling Virtual Machine Platform feature...
@@ -90,7 +91,7 @@ if errorlevel 1 (
         powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
         
         if errorlevel 1 (
-            echo [✗] Failed to enable Virtual Machine Platform feature
+            echo [X] Failed to enable Virtual Machine Platform feature
             echo [%date% %time%] ERROR: Failed to enable Virtual Machine Platform >> "%LOG_FILE%"
             echo Please enable manually:
             echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
@@ -100,29 +101,34 @@ if errorlevel 1 (
             exit /b 1
         )
         
-        echo [✓] Virtual Machine Platform enabled
+        echo [OK] Virtual Machine Platform enabled
         echo [%date% %time%] Virtual Machine Platform enabled successfully >> "%LOG_FILE%"
         echo.
-        echo ════════════════════════════════════════════════════════════
+        echo ============================================================
         echo  RESTART REQUIRED
-        echo ════════════════════════════════════════════════════════════
+        echo ============================================================
         echo.
         echo Your computer MUST restart for the changes to take effect.
+        echo.
+        echo [!] IMPORTANT: Save your work before proceeding
         echo.
         echo Please:
         echo  1. Save any open files
         echo  2. Close all applications
-        echo  3. Press any key to restart now
+        echo  3. Press any key when ready to restart
         echo.
         echo [*] Waiting for restart confirmation...
         pause
         
         echo [%date% %time%] User confirmed restart >> "%LOG_FILE%"
+        echo [*] Restarting system in 5 seconds...
+        echo [*] Press Ctrl+C if you need to cancel
+        timeout /t 5 /nobreak
         REM Restart immediately
         shutdown /r /t 0 /c "WSL2 features activated. System restart required."
         exit /b 0
     ) else (
-        echo [✓] WSL commands work
+        echo [OK] WSL commands work
         echo [%date% %time%] WSL commands working >> "%LOG_FILE%"
         
         REM WSL commands work, but Ubuntu not installed
@@ -144,13 +150,13 @@ if errorlevel 1 (
             exit /b 1
         )
         
-        echo [✓] Ubuntu distribution installed
+        echo [OK] Ubuntu distribution installed
         echo [%date% %time%] Ubuntu installed successfully >> "%LOG_FILE%"
     )
 )
 
 REM Si llegamos aquí, WSL2 está funcionando
-echo [✓] WSL2 is active and working
+echo [OK] WSL2 is active and working
 echo [%date% %time%] WSL2 verification PASSED >> "%LOG_FILE%"
 timeout /t 3 /nobreak >nul
 
@@ -158,7 +164,7 @@ REM Check if Docker is installed
 where docker >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [×] Docker Desktop not found, installing...
+    echo [X] Docker Desktop not found, installing...
     echo [%date% %time%] Docker not found - starting installation >> "%LOG_FILE%"
     
     echo [*] Downloading Docker Desktop...
@@ -167,27 +173,27 @@ if errorlevel 1 (
         "$ProgressPreference='SilentlyContinue'; ^
         Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' ^
         -OutFile '%TEMP%\DockerInstaller.exe'; ^
-        Write-Host '[✓] Docker Desktop downloaded'"
+        Write-Host '[OK] Docker Desktop downloaded'"
     
     if exist "%TEMP%\DockerInstaller.exe" (
-        echo [✓] Docker installer downloaded successfully
+        echo [OK] Docker installer downloaded successfully
         echo [%date% %time%] Docker installer downloaded >> "%LOG_FILE%"
         echo [*] Running Docker Desktop installer...
         echo [%date% %time%] Running installer /install --accept-license --wsl2 >> "%LOG_FILE%"
         start /wait "%TEMP%\DockerInstaller.exe" install --accept-license --wsl2 >>"%LOG_FILE%" 2>&1
         
         timeout /t 5 /nobreak >nul
-        echo [✓] Docker Desktop installed
+        echo [OK] Docker Desktop installed
         echo [%date% %time%] Docker Desktop installation completed >> "%LOG_FILE%"
     ) else (
-        echo [✗] Failed to download Docker Desktop
+        echo [X] Failed to download Docker Desktop
         echo [%date% %time%] ERROR: Failed to download Docker installer >> "%LOG_FILE%"
         echo Please download manually from: https://www.docker.com/products/docker-desktop
         pause
         exit /b 1
     )
 ) else (
-    echo [✓] Docker Desktop is already installed
+    echo [OK] Docker Desktop is already installed
     echo [%date% %time%] Docker already installed >> "%LOG_FILE%"
 )
 
@@ -200,7 +206,7 @@ set TIMEOUT=120
 set ELAPSED=0
 
 :wait_docker
-echo [%date% %time%] Docker check attempt ^(!ELAPSED!s/!TIMEOUT!s^) >> "%LOG_FILE%"
+echo [%date% %time%] Docker check attempt (!ELAPSED!s/!TIMEOUT!s) >> "%LOG_FILE%"
 docker ps >nul 2>>"%LOG_FILE%"
 if errorlevel 1 (
     if !ELAPSED! lss !TIMEOUT! (
@@ -213,11 +219,8 @@ if errorlevel 1 (
     echo [!] This may be normal on first run - Docker is initializing WSL2
     echo [*] Continuing anyway...
 ) else (
-    echo [✓] Docker is ready
+    echo [OK] Docker is ready
     echo [%date% %time%] Docker is READY >> "%LOG_FILE%"
-)
-) else (
-    echo [✓] Docker is ready
 )
 
 echo.
@@ -232,14 +235,14 @@ set TAILNET=
 set FLASK_ENV=production
 
 if exist "%SCRIPT_DIR%\templates\quic-file-transfer\.env" (
-    echo [✓] Loading credentials from .env...
+    echo [OK] Loading credentials from .env...
     for /f "usebackq tokens=* delims=" %%a in ("%SCRIPT_DIR%\templates\quic-file-transfer\.env") do (
         if not "%%a"=="" if not "%%a:~0,1%"=="#" (
             set "%%a"
         )
     )
 ) else (
-    echo [✗] .env file not found at templates\quic-file-transfer\.env
+    echo [X] .env file not found at templates\quic-file-transfer\.env
     echo Please create it with your TAILSCALE_AUTHKEY
     pause
     exit /b 1
@@ -247,14 +250,14 @@ if exist "%SCRIPT_DIR%\templates\quic-file-transfer\.env" (
 
 REM Validate TAILSCALE_AUTHKEY
 if "!TAILSCALE_AUTHKEY!"=="" (
-    echo [✗] Error: TAILSCALE_AUTHKEY not defined in .env
+    echo [X] Error: TAILSCALE_AUTHKEY not defined in .env
     echo Please edit templates\quic-file-transfer\.env and add:
     echo   TAILSCALE_AUTHKEY=tskey-auth-...
     pause
     exit /b 1
 )
 
-echo [✓] Credentials loaded successfully
+echo [OK] Credentials loaded successfully
 echo.
 
 REM ============================================================
@@ -264,18 +267,18 @@ REM ============================================================
 set DOWNLOADS_PATH=
 if exist "%USERPROFILE%\Descargas" (
     set DOWNLOADS_PATH=%USERPROFILE%\Descargas
-    echo [✓] Spanish Downloads folder detected: !DOWNLOADS_PATH!
+    echo [OK] Spanish Downloads folder detected: !DOWNLOADS_PATH!
 ) else if exist "%USERPROFILE%\Downloads" (
     set DOWNLOADS_PATH=%USERPROFILE%\Downloads
-    echo [✓] English Downloads folder detected: !DOWNLOADS_PATH!
+    echo [OK] English Downloads folder detected: !DOWNLOADS_PATH!
 ) else (
     set DOWNLOADS_PATH=%USERPROFILE%\Downloads
     mkdir "!DOWNLOADS_PATH!" 2>nul
-    echo [✓] Downloads folder created: !DOWNLOADS_PATH!
+    echo [OK] Downloads folder created: !DOWNLOADS_PATH!
 )
 
 if not exist "!DOWNLOADS_PATH!" (
-    echo [✗] Error: Could not establish DOWNLOADS_PATH
+    echo [X] Error: Could not establish DOWNLOADS_PATH
     pause
     exit /b 1
 )
@@ -286,15 +289,15 @@ REM ============================================================
 REM  TAILSCALE INSTALLATION AND CONNECTION
 REM ============================================================
 
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo  TAILSCALE CONFIGURATION (HOST)
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo.
 
 REM Check if Tailscale is installed
 where tailscale >nul 2>&1
 if errorlevel 1 (
-    echo [×] Tailscale not installed, attempting to install...
+    echo [X] Tailscale not installed, attempting to install...
     echo.
     
     REM Try winget first (Windows 11+)
@@ -311,7 +314,7 @@ if errorlevel 1 (
             Start-Process '%TEMP%\Tailscale-Setup.exe' -Wait"
         
         if errorlevel 1 (
-            echo [✗] Failed to install Tailscale
+            echo [X] Failed to install Tailscale
             echo Please install manually from: https://tailscale.com/download/windows
             pause
             exit /b 1
@@ -334,15 +337,15 @@ if errorlevel 1 (
     timeout /t 3 /nobreak >nul
     where tailscale >nul 2>&1
     if errorlevel 1 (
-        echo [✗] Tailscale still not found after installation attempt
+        echo [X] Tailscale still not found after installation attempt
         echo Please install manually: https://tailscale.com/download/windows
         pause
         exit /b 1
     )
     
-    echo [✓] Tailscale installed successfully
+    echo [OK] Tailscale installed successfully
 ) else (
-    echo [✓] Tailscale already installed
+    echo [OK] Tailscale already installed
 )
 
 echo.
@@ -350,7 +353,7 @@ echo.
 REM Check if tailscaled daemon is running
 tasklist /FI "IMAGENAME eq tailscaled.exe" 2>nul | find /I /N "tailscaled.exe" >nul
 if errorlevel 1 (
-    echo [×] Tailscale daemon not running, starting...
+    echo [X] Tailscale daemon not running, starting...
     
     REM Windows doesn't have "services start" like macOS, just run the exe
     net start Tailscale 2>nul || (
@@ -370,13 +373,13 @@ if errorlevel 1 (
             set /a ELAPSED=!ELAPSED!+1
             goto wait_daemon
         )
-        echo [✗] tailscaled did not start within !TIMEOUT! seconds
+        echo [X] tailscaled did not start within !TIMEOUT! seconds
         pause
         exit /b 1
     )
-    echo [✓] Tailscale daemon started
+    echo [OK] Tailscale daemon started
 ) else (
-    echo [✓] Tailscale daemon already running
+    echo [OK] Tailscale daemon already running
 )
 
 echo.
@@ -386,10 +389,10 @@ echo [*] Checking Tailscale connection status...
 for /f "usebackq delims=" %%i in (`tailscale ip -4 2^>nul`) do set TS_IP=%%i
 
 if not "!TS_IP!"=="" (
-    echo [✓] Tailscale already connected
+    echo [OK] Tailscale already connected
     echo     IP: !TS_IP!
 ) else (
-    echo [×] Tailscale not connected, connecting with authkey...
+    echo [X] Tailscale not connected, connecting with authkey...
     
     REM Try to logout first (clean state)
     tailscale logout 2>nul
@@ -400,7 +403,7 @@ if not "!TS_IP!"=="" (
     :tailscale_connect_retry
     
     if !RETRY_COUNT! gtr 5 (
-        echo [✗] Failed to connect after 5 attempts
+        echo [X] Failed to connect after 5 attempts
         echo Please verify your TAILSCALE_AUTHKEY is valid and not expired
         echo Generate new key: https://login.tailscale.com/admin/settings/keys
         pause
@@ -428,7 +431,7 @@ if not "!TS_IP!"=="" (
         goto tailscale_connect_retry
     )
     
-    echo [✓] Tailscale connected successfully
+    echo [OK] Tailscale connected successfully
     echo     IP: !TS_IP!
 )
 
@@ -441,21 +444,21 @@ REM ============================================================
 REM  DOCKER COMPOSE SETUP
 REM ============================================================
 
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo  STARTING DOCKER
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
 echo.
 
 REM Check Docker availability
 where docker >nul 2>&1
 if errorlevel 1 (
-    echo [✗] Docker not found. Please install Docker Desktop from:
+    echo [X] Docker not found. Please install Docker Desktop from:
     echo    https://www.docker.com/products/docker-desktop
     pause
     exit /b 1
 )
 
-echo [✓] Docker found
+echo [OK] Docker found
 echo.
 
 REM Determine compose command
@@ -463,7 +466,7 @@ docker compose version >nul 2>&1
 if errorlevel 1 (
     docker-compose --version >nul 2>&1
     if errorlevel 1 (
-        echo [✗] docker compose not found
+        echo [X] docker compose not found
         echo Please install Docker Compose: https://docs.docker.com/compose/install/
         pause
         exit /b 1
@@ -575,14 +578,14 @@ echo.
     up --build -d
 
 if errorlevel 1 (
-    echo [✗] Error: docker compose failed
+    echo [X] Error: docker compose failed
     echo Run for more details:
     echo   !COMPOSE_CMD! -f templates\quic-file-transfer\docker-compose.yml logs
     pause
     exit /b 1
 )
 
-echo [✓] Containers started successfully
+echo [OK] Containers started successfully
 echo.
 
 timeout /t 3 /nobreak >nul
@@ -591,15 +594,15 @@ REM ============================================================
 REM  SUCCESS MESSAGE AND NEXT STEPS
 REM ============================================================
 
-echo ════════════════════════════════════════════════════════════
-echo  ✅ SYSTEM READY
-echo ════════════════════════════════════════════════════════════
+echo ============================================================
+echo  OK SYSTEM READY
+echo ============================================================
 echo.
 echo [%date% %time%] === SYSTEM READY === >> "%LOG_FILE%"
-echo [✓] Host Tailscale IP: %HOST_TAILSCALE_IP%
-echo [✓] Web Interface:     http://localhost:8080
-echo [✓] Downloads:        %DOWNLOADS_PATH%
-echo [✓] DEBUG LOG:         %LOG_FILE%
+echo [OK] Host Tailscale IP: %HOST_TAILSCALE_IP%
+echo [OK] Web Interface:     http://localhost:8080
+echo [OK] Downloads:        %DOWNLOADS_PATH%
+echo [OK] DEBUG LOG:         %LOG_FILE%
 echo.
 echo Next Steps:
 echo  1. Open http://localhost:8080 in your browser
@@ -621,7 +624,7 @@ echo.
 REM Try to open browser
 start http://localhost:8080 2>nul
 
-echo ✅ Ready to transfer files through Tailscale!
+echo OK Ready to transfer files through Tailscale!
 echo [%date% %time%] === SCRIPT COMPLETED SUCCESSFULLY === >> "%LOG_FILE%"
 echo.
 
