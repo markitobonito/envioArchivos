@@ -26,38 +26,29 @@ echo.
 
 REM Check if WSL2 is installed
 echo [*] Checking WSL2...
-
-REM Intentar primero con wsl --version (más directo)
-wsl --version >nul 2>&1
+wsl --list --verbose >nul 2>&1
 if errorlevel 1 (
-    REM Si falla, intentar con wsl --list (segunda oportunidad)
-    wsl --list --verbose >nul 2>&1
-    if errorlevel 1 (
-        REM Si ambos fallan, está realmente no instalado
-        echo [×] WSL2 not found, installing...
-        echo [!] This will enable virtualization features (requires restart)
-        echo.
-        
-        REM Enable WSL2 with automatic restart
-        echo [*] Enabling WSL2 and Ubuntu...
-        powershell -Command "Start-Process 'powershell' -ArgumentList 'wsl --install -d Ubuntu' -Wait -Verb RunAs"
-        
-        echo.
-        echo [✓] WSL2 installation initiated
-        echo [!] System will restart in 30 seconds...
-        echo [!] After restart, please run this script again
-        echo.
-        
-        REM Restart Windows (60 second delay gives user time to save)
-        shutdown /r /t 60 /c "WSL2 installation complete. Restarting to apply changes..."
-        pause
-        exit /b 0
-    )
+    echo [×] WSL2 not found, installing...
+    echo [!] This will enable virtualization features (requires restart)
+    echo.
+    
+    REM Enable WSL2 with automatic restart
+    echo [*] Enabling WSL2 and Ubuntu...
+    powershell -Command "Start-Process 'powershell' -ArgumentList 'wsl --install -d Ubuntu' -Wait -Verb RunAs"
+    
+    echo.
+    echo [✓] WSL2 installation initiated
+    echo [!] System will restart in 30 seconds...
+    echo [!] After restart, please run this script again
+    echo.
+    
+    REM Restart Windows (60 second delay gives user time to save)
+    shutdown /r /t 60 /c "WSL2 installation complete. Restarting to apply changes..."
+    pause
+    exit /b 0
+) else (
+    echo [✓] WSL2 is installed
 )
-
-REM Si llegamos aquí, WSL2 está instalado (o en inicialización)
-echo [✓] WSL2 is installed or initializing...
-timeout /t 3 /nobreak >nul
 
 REM Check if Docker is installed
 where docker >nul 2>&1
@@ -90,21 +81,19 @@ if errorlevel 1 (
 echo.
 
 REM Wait for Docker to be ready
-echo [*] Waiting for Docker to be ready (this may take up to 2 minutes on first run after WSL2 install)...
-set TIMEOUT=120
+echo [*] Waiting for Docker to be ready (this may take a minute on first run)...
+set TIMEOUT=60
 set ELAPSED=0
 
 :wait_docker
 docker ps >nul 2>&1
 if errorlevel 1 (
     if !ELAPSED! lss !TIMEOUT! (
-        timeout /t 5 /nobreak >nul
-        set /a ELAPSED=!ELAPSED!+5
+        timeout /t 3 /nobreak >nul
+        set /a ELAPSED=!ELAPSED!+3
         goto wait_docker
     )
-    echo [!] Docker not responding after !TIMEOUT! seconds
-    echo [!] This may be normal on first run - Docker is initializing WSL2
-    echo [*] Continuing anyway...
+    echo [!] Docker not responding after !TIMEOUT! seconds, but continuing...
 ) else (
     echo [✓] Docker is ready
 )
