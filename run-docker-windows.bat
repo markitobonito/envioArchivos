@@ -1,61 +1,168 @@
 @echo off
 REM ============================================================
-REM  run-docker.bat - Windows version of run-docker.sh
+REM  run-docker-windows.bat - Windows Setup Script
 REM  Works on Windows 10/11 Home, Pro, Enterprise (with WSL2)
 REM ============================================================
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+REM Create log file
+set LOG_FILE=%TEMP%\setup-debug.log
+echo. > "%LOG_FILE%"
+echo [%date% %time%] ===== SCRIPT START ===== >> "%LOG_FILE%"
+
 echo.
 echo ════════════════════════════════════════════════════════════
 echo  QUIC File Transfer System - Windows Setup
 echo ════════════════════════════════════════════════════════════
+echo.
+echo Log file: %LOG_FILE%
 echo.
 
 REM Detect current script directory
 set SCRIPT_DIR=%~dp0
 set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
 
-REM ============================================================
-REM  WSL2 AND DOCKER INSTALLATION (AUTOMATIC)
-REM ============================================================
-
-echo [*] Checking prerequisites...
+echo [*] Script directory: %SCRIPT_DIR%
+echo [%date% %time%] Script DIR: %SCRIPT_DIR% >> "%LOG_FILE%"
 echo.
 
 REM Check if WSL2 is installed
 echo [*] Checking WSL2...
-wsl --list --verbose >nul 2>&1
+echo [%date% %time%] === WSL2 CHECK START === >> "%LOG_FILE%"
+
+REM First, try to see if Ubuntu is already installed
+echo [*] Test 1: Checking if Ubuntu distribution is running...
+echo [%date% %time%] Test 1: Running 'wsl -d Ubuntu -e echo WSL2 working' >> "%LOG_FILE%"
+wsl -d Ubuntu -e echo "WSL2 working" >nul 2>>"%LOG_FILE%"
 if errorlevel 1 (
-    echo [×] WSL2 not found, installing...
-    echo [!] This will enable virtualization features (requires restart)
-    echo.
+    echo [!] Ubuntu test failed (errorlevel: %ERRORLEVEL%)
+    echo [%date% %time%] Ubuntu test FAILED >> "%LOG_FILE%"
     
-    REM Enable WSL2 with automatic restart
-    echo [*] Enabling WSL2 and Ubuntu...
-    powershell -Command "Start-Process 'powershell' -ArgumentList 'wsl --install -d Ubuntu' -Wait -Verb RunAs"
-    
-    echo.
-    echo [✓] WSL2 installation initiated
-    echo [!] System will restart in 30 seconds...
-    echo [!] After restart, please run this script again
-    echo.
-    
-    REM Restart Windows (60 second delay gives user time to save)
-    shutdown /r /t 60 /c "WSL2 installation complete. Restarting to apply changes..."
-    pause
-    exit /b 0
-) else (
-    echo [✓] WSL2 is installed
+    REM Ubuntu not installed, check if WSL commands work
+    echo [*] Test 2: Checking if wsl --version works...
+    echo [%date% %time%] Test 2: Running 'wsl --version' >> "%LOG_FILE%"
+    wsl --version >nul 2>>"%LOG_FILE%"
+    if errorlevel 1 (
+        echo [!] WSL version check failed (errorlevel: %ERRORLEVEL%)
+        echo [%date% %time%] WSL version check FAILED >> "%LOG_FILE%"
+        
+        REM WSL commands don't work, features not enabled
+        echo.
+        echo ════════════════════════════════════════════════════════════
+        echo  WSL2 INSTALLATION REQUIRED
+        echo ════════════════════════════════════════════════════════════
+        echo.
+        echo [×] WSL2 features are NOT activated in your system
+        echo [%date% %time%] WSL2 features NOT activated - enabling... >> "%LOG_FILE%"
+        echo.
+        echo This script will enable WSL2 features. IMPORTANT:
+        echo  1. Administrator privileges will be requested
+        echo  2. System features will be enabled
+        echo  3. You will need to RESTART your computer
+        echo  4. After restart, run this script again
+        echo.
+        pause
+        
+        REM Enable WSL2 features
+        echo.
+        echo [*] Enabling Windows Subsystem for Linux (WSL) feature...
+        echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >> "%LOG_FILE%"
+        powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
+        
+        if errorlevel 1 (
+            echo [✗] Failed to enable WSL feature
+            echo [%date% %time%] ERROR: Failed to enable WSL feature >> "%LOG_FILE%"
+            echo Please enable manually:
+            echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
+            echo  2. Check: "Windows Subsystem for Linux"
+            echo  3. Click OK and restart
+            pause
+            exit /b 1
+        )
+        
+        echo [✓] WSL feature enabled
+        echo [%date% %time%] WSL feature enabled successfully >> "%LOG_FILE%"
+        echo.
+        echo [*] Enabling Virtual Machine Platform feature...
+        echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >> "%LOG_FILE%"
+        powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
+        
+        if errorlevel 1 (
+            echo [✗] Failed to enable Virtual Machine Platform feature
+            echo [%date% %time%] ERROR: Failed to enable Virtual Machine Platform >> "%LOG_FILE%"
+            echo Please enable manually:
+            echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
+            echo  2. Check: "Virtual Machine Platform"
+            echo  3. Click OK and restart
+            pause
+            exit /b 1
+        )
+        
+        echo [✓] Virtual Machine Platform enabled
+        echo [%date% %time%] Virtual Machine Platform enabled successfully >> "%LOG_FILE%"
+        echo.
+        echo ════════════════════════════════════════════════════════════
+        echo  RESTART REQUIRED
+        echo ════════════════════════════════════════════════════════════
+        echo.
+        echo Your computer MUST restart for the changes to take effect.
+        echo.
+        echo Please:
+        echo  1. Save any open files
+        echo  2. Close all applications
+        echo  3. Press any key to restart now
+        echo.
+        echo [*] Waiting for restart confirmation...
+        pause
+        
+        echo [%date% %time%] User confirmed restart >> "%LOG_FILE%"
+        REM Restart immediately
+        shutdown /r /t 0 /c "WSL2 features activated. System restart required."
+        exit /b 0
+    ) else (
+        echo [✓] WSL commands work
+        echo [%date% %time%] WSL commands working >> "%LOG_FILE%"
+        
+        REM WSL commands work, but Ubuntu not installed
+        echo [*] Test 3: Checking for Ubuntu distribution...
+        echo [*] WSL2 detected, attempting to install Ubuntu distribution...
+        echo [%date% %time%] Running: wsl --install -d Ubuntu --no-launch >> "%LOG_FILE%"
+        
+        REM Try to install Ubuntu
+        wsl --install -d Ubuntu --no-launch >>"%LOG_FILE%" 2>&1
+        
+        if errorlevel 1 (
+            echo [!] Could not auto-install Ubuntu distribution (errorlevel: %ERRORLEVEL%)
+            echo [%date% %time%] ERROR: Could not auto-install Ubuntu >> "%LOG_FILE%"
+            echo Please install Ubuntu manually:
+            echo  1. Open Microsoft Store
+            echo  2. Search for "Ubuntu"
+            echo  3. Click "Get" to install
+            pause
+            exit /b 1
+        )
+        
+        echo [✓] Ubuntu distribution installed
+        echo [%date% %time%] Ubuntu installed successfully >> "%LOG_FILE%"
+    )
 )
+
+REM Si llegamos aquí, WSL2 está funcionando
+echo [✓] WSL2 is active and working
+echo [%date% %time%] WSL2 verification PASSED >> "%LOG_FILE%"
+timeout /t 3 /nobreak >nul
 
 REM Check if Docker is installed
 where docker >nul 2>&1
 if errorlevel 1 (
+    echo.
     echo [×] Docker Desktop not found, installing...
+    echo [%date% %time%] Docker not found - starting installation >> "%LOG_FILE%"
     
     echo [*] Downloading Docker Desktop...
+    echo [%date% %time%] Downloading Docker Desktop installer >> "%LOG_FILE%"
     powershell -NoProfile -Command ^
         "$ProgressPreference='SilentlyContinue'; ^
         Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' ^
@@ -63,37 +170,52 @@ if errorlevel 1 (
         Write-Host '[✓] Docker Desktop downloaded'"
     
     if exist "%TEMP%\DockerInstaller.exe" (
+        echo [✓] Docker installer downloaded successfully
+        echo [%date% %time%] Docker installer downloaded >> "%LOG_FILE%"
         echo [*] Running Docker Desktop installer...
-        start /wait "%TEMP%\DockerInstaller.exe" install --accept-license --wsl2
+        echo [%date% %time%] Running installer /install --accept-license --wsl2 >> "%LOG_FILE%"
+        start /wait "%TEMP%\DockerInstaller.exe" install --accept-license --wsl2 >>"%LOG_FILE%" 2>&1
         
         timeout /t 5 /nobreak >nul
         echo [✓] Docker Desktop installed
+        echo [%date% %time%] Docker Desktop installation completed >> "%LOG_FILE%"
     ) else (
         echo [✗] Failed to download Docker Desktop
+        echo [%date% %time%] ERROR: Failed to download Docker installer >> "%LOG_FILE%"
         echo Please download manually from: https://www.docker.com/products/docker-desktop
         pause
         exit /b 1
     )
 ) else (
-    echo [✓] Docker Desktop is installed
+    echo [✓] Docker Desktop is already installed
+    echo [%date% %time%] Docker already installed >> "%LOG_FILE%"
 )
 
 echo.
 
 REM Wait for Docker to be ready
-echo [*] Waiting for Docker to be ready (this may take a minute on first run)...
-set TIMEOUT=60
+echo [*] Waiting for Docker to be ready (this may take up to 2 minutes on first run after WSL2 install)...
+echo [%date% %time%] === DOCKER READINESS CHECK === >> "%LOG_FILE%"
+set TIMEOUT=120
 set ELAPSED=0
 
 :wait_docker
-docker ps >nul 2>&1
+echo [%date% %time%] Docker check attempt ^(!ELAPSED!s/!TIMEOUT!s^) >> "%LOG_FILE%"
+docker ps >nul 2>>"%LOG_FILE%"
 if errorlevel 1 (
     if !ELAPSED! lss !TIMEOUT! (
         timeout /t 3 /nobreak >nul
         set /a ELAPSED=!ELAPSED!+3
         goto wait_docker
     )
-    echo [!] Docker not responding after !TIMEOUT! seconds, but continuing...
+    echo [!] Docker not responding after !TIMEOUT! seconds
+    echo [%date% %time%] Docker timeout after !TIMEOUT!s >> "%LOG_FILE%"
+    echo [!] This may be normal on first run - Docker is initializing WSL2
+    echo [*] Continuing anyway...
+) else (
+    echo [✓] Docker is ready
+    echo [%date% %time%] Docker is READY >> "%LOG_FILE%"
+)
 ) else (
     echo [✓] Docker is ready
 )
@@ -408,6 +530,7 @@ timeout /t 1 /nobreak >nul
 
 REM Start Tailscale monitor
 echo [*] Starting Tailscale monitor (automatic reconnection)...
+echo [%date% %time%] Starting Tailscale monitor >> "%LOG_FILE%"
 start "Tailscale Monitor" /min python "%SCRIPT_DIR%\tailscale-monitor.py"
 timeout /t 2 /nobreak >nul
 echo [✓] Tailscale monitor started
@@ -415,6 +538,7 @@ echo.
 
 REM Start Tailscale API service
 echo [*] Starting Tailscale API service (port 5001)...
+echo [%date% %time%] Starting Tailscale API service >> "%LOG_FILE%"
 start "Tailscale API" /min python "%SCRIPT_DIR%\tailscale-api.py"
 timeout /t 2 /nobreak >nul
 echo [✓] Tailscale API service started
@@ -422,6 +546,7 @@ echo.
 
 REM Start message monitor (.msg alerts)
 echo [*] Starting message monitor (.msg alerts)...
+echo [%date% %time%] Starting message monitor >> "%LOG_FILE%"
 start "Monitor de Alertas" /min python "%SCRIPT_DIR%\msg-monitor.py"
 timeout /t 2 /nobreak >nul
 echo [✓] Message monitor started
@@ -429,6 +554,7 @@ echo.
 
 REM Start video monitor
 echo [*] Starting video monitor...
+echo [%date% %time%] Starting video monitor >> "%LOG_FILE%"
 start "Monitor de Videos" /min python "%SCRIPT_DIR%\video-monitor.py"
 timeout /t 2 /nobreak >nul
 echo [✓] Video monitor started
@@ -469,9 +595,11 @@ echo ═════════════════════════
 echo  ✅ SYSTEM READY
 echo ════════════════════════════════════════════════════════════
 echo.
+echo [%date% %time%] === SYSTEM READY === >> "%LOG_FILE%"
 echo [✓] Host Tailscale IP: %HOST_TAILSCALE_IP%
 echo [✓] Web Interface:     http://localhost:8080
 echo [✓] Downloads:        %DOWNLOADS_PATH%
+echo [✓] DEBUG LOG:         %LOG_FILE%
 echo.
 echo Next Steps:
 echo  1. Open http://localhost:8080 in your browser
@@ -479,11 +607,12 @@ echo  2. Upload files - they'll be sent to all connected peers
 echo  3. Videos will open automatically when received
 echo  4. Alerts will play with notifications and TTS
 echo.
-echo Logs:
-echo  - Docker:     !COMPOSE_CMD! -f templates\quic-file-transfer\docker-compose.yml logs -f
-echo  - Tailscale:  type ^"%TEMP%\tailscale-monitor.log^"
-echo  - Alerts:     type ^"%TEMP%\msg-monitor.log^"
-echo  - Videos:     type ^"%TEMP%\video-monitor.log^"
+echo Logs and Debug Info:
+echo  - Setup Debug Log:  %LOG_FILE%
+echo  - Docker:           !COMPOSE_CMD! -f templates\quic-file-transfer\docker-compose.yml logs -f
+echo  - Tailscale:        type ^"%TEMP%\tailscale-monitor.log^"
+echo  - Alerts:           type ^"%TEMP%\msg-monitor.log^"
+echo  - Videos:           type ^"%TEMP%\video-monitor.log^"
 echo.
 echo To stop containers:
 echo  !COMPOSE_CMD! -f templates\quic-file-transfer\docker-compose.yml down
@@ -493,6 +622,7 @@ REM Try to open browser
 start http://localhost:8080 2>nul
 
 echo ✅ Ready to transfer files through Tailscale!
+echo [%date% %time%] === SCRIPT COMPLETED SUCCESSFULLY === >> "%LOG_FILE%"
 echo.
 
 pause
