@@ -24,8 +24,9 @@
       "fd7a:115c:a1e0::3f35:3a1c/128"
     ],
     "Addrs": [
-      "38.253.158.7:12699",
-      "192.168.18.58:51539"
+      "127.0.0.1:51539",
+      "[::1]:51539",
+      "[fe80::1]:51539"
     ],
     "CurAddr": "",
     "Relay": "mia",
@@ -36,7 +37,7 @@
     "LastWrite": "0001-01-01T00:00:00Z",
     "LastSeen": "0001-01-01T00:00:00Z",
     "LastHandshake": "0001-01-01T00:00:00Z",
-    "Online": true,
+    "Online": false,
     "ExitNode": false,
     "ExitNodeOption": false,
     "Active": false,
@@ -78,7 +79,10 @@
     "InEngine": false,
     "KeyExpiry": "2026-07-02T12:00:53Z"
   },
-  "Health": [],
+  "Health": [
+    "Network equipment from \"Fortinet\" may be blocking Tailscale traffic on this network. Connect to another network, or contact your network administrator for assistance.",
+    "Unable to connect to the Tailscale coordination server to synchronize the state of your tailnet. Peer reachability might degrade over time."
+  ],
   "MagicDNSSuffix": "tailfb58ed.ts.net",
   "CurrentTailnet": {
     "Name": "nash2207@hotmail.com",
