@@ -9,6 +9,7 @@ cd /d "%~dp0"
 
 REM Create log file
 set LOG_FILE=%TEMP%\setup-debug.log
+set WSL_INSTALL_MARKER=%TEMP%\wsl-install-marker.txt
 echo. > "%LOG_FILE%"
 echo [%date% %time%] ===== SCRIPT START ===== >> "%LOG_FILE%"
 
@@ -29,136 +30,145 @@ echo [%date% %time%] Script DIR: %SCRIPT_DIR% >> "%LOG_FILE%"
 echo.
 
 REM Check if WSL2 is installed
-echo [*] Checking WSL2...
+echo [*] Checking WSL2 installation status...
 echo [%date% %time%] === WSL2 CHECK START === >> "%LOG_FILE%"
 
-REM First, try to see if Ubuntu is already installed
-echo [*] Test 1: Checking if Ubuntu distribution is running...
-echo [%date% %time%] Test 1: Running 'wsl -d Ubuntu -e echo WSL2 working' >> "%LOG_FILE%"
-wsl -d Ubuntu -e echo "WSL2 working" >nul 2>>"%LOG_FILE%"
-if errorlevel 1 (
-    echo [!] Ubuntu test failed (errorlevel: %ERRORLEVEL%)
-    echo [%date% %time%] Ubuntu test FAILED >> "%LOG_FILE%"
-    
-    REM Ubuntu not installed, check if WSL commands work
-    echo [*] Test 2: Checking if wsl --version works...
-    echo [%date% %time%] Test 2: Running 'wsl --version' >> "%LOG_FILE%"
-    wsl --version >nul 2>>"%LOG_FILE%"
-    if errorlevel 1 (
-        echo [!] WSL version check failed (errorlevel: %ERRORLEVEL%)
-        echo [%date% %time%] WSL version check FAILED >> "%LOG_FILE%"
-        
-        REM WSL commands don't work, features not enabled
-        echo.
-        echo ============================================================
-        echo  WSL2 INSTALLATION REQUIRED
-        echo ============================================================
-        echo.
-        echo [X] WSL2 features are NOT activated in your system
-        echo [%date% %time%] WSL2 features NOT activated - enabling... >> "%LOG_FILE%"
-        echo.
-        echo This script will enable WSL2 features. IMPORTANT:
-        echo  1. Administrator privileges will be requested
-        echo  2. System features will be enabled
-        echo  3. You will need to RESTART your computer
-        echo  4. After restart, run this script again
-        echo.
-        echo Press any key to continue...
-        pause
-        
-        REM Enable WSL2 features
-        echo.
-        echo [*] Enabling Windows Subsystem for Linux (WSL) feature...
-        echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >> "%LOG_FILE%"
-        powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
-        
-        if errorlevel 1 (
-            echo [X] Failed to enable WSL feature
-            echo [%date% %time%] ERROR: Failed to enable WSL feature >> "%LOG_FILE%"
-            echo Please enable manually:
-            echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
-            echo  2. Check: "Windows Subsystem for Linux"
-            echo  3. Click OK and restart
-            pause
-            exit /b 1
-        )
-        
-        echo [OK] WSL feature enabled
-        echo [%date% %time%] WSL feature enabled successfully >> "%LOG_FILE%"
-        echo.
-        echo [*] Enabling Virtual Machine Platform feature...
-        echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >> "%LOG_FILE%"
-        powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
-        
-        if errorlevel 1 (
-            echo [X] Failed to enable Virtual Machine Platform feature
-            echo [%date% %time%] ERROR: Failed to enable Virtual Machine Platform >> "%LOG_FILE%"
-            echo Please enable manually:
-            echo  1. Open: Control Panel ^> Programs ^> Turn Windows features on or off
-            echo  2. Check: "Virtual Machine Platform"
-            echo  3. Click OK and restart
-            pause
-            exit /b 1
-        )
-        
-        echo [OK] Virtual Machine Platform enabled
-        echo [%date% %time%] Virtual Machine Platform enabled successfully >> "%LOG_FILE%"
-        echo.
-        echo ============================================================
-        echo  RESTART REQUIRED
-        echo ============================================================
-        echo.
-        echo Your computer MUST restart for the changes to take effect.
-        echo.
-        echo [!] IMPORTANT: Save your work before proceeding
-        echo.
-        echo Please:
-        echo  1. Save any open files
-        echo  2. Close all applications
-        echo  3. Press any key when ready to restart
-        echo.
-        echo [*] Waiting for restart confirmation...
-        pause
-        
-        echo [%date% %time%] User confirmed restart >> "%LOG_FILE%"
-        echo [*] Restarting system in 5 seconds...
-        echo [*] Press Ctrl+C if you need to cancel
-        timeout /t 5 /nobreak
-        REM Restart immediately
-        shutdown /r /t 0 /c "WSL2 features activated. System restart required."
-        exit /b 0
-    ) else (
-        echo [OK] WSL commands work
-        echo [%date% %time%] WSL commands working >> "%LOG_FILE%"
-        
-        REM WSL commands work, but Ubuntu not installed
-        echo [*] Test 3: Checking for Ubuntu distribution...
-        echo [*] WSL2 detected, attempting to install Ubuntu distribution...
-        echo [%date% %time%] Running: wsl --install -d Ubuntu --no-launch >> "%LOG_FILE%"
-        
-        REM Try to install Ubuntu
-        wsl --install -d Ubuntu --no-launch >>"%LOG_FILE%" 2>&1
-        
-        if errorlevel 1 (
-            echo [!] Could not auto-install Ubuntu distribution (errorlevel: %ERRORLEVEL%)
-            echo [%date% %time%] ERROR: Could not auto-install Ubuntu >> "%LOG_FILE%"
-            echo Please install Ubuntu manually:
-            echo  1. Open Microsoft Store
-            echo  2. Search for "Ubuntu"
-            echo  3. Click "Get" to install
-            pause
-            exit /b 1
-        )
-        
-        echo [OK] Ubuntu distribution installed
-        echo [%date% %time%] Ubuntu installed successfully >> "%LOG_FILE%"
-    )
+REM Check if we previously installed WSL features (marker file)
+if exist "%WSL_INSTALL_MARKER%" (
+    echo [*] Found WSL installation marker - attempting to verify WSL2 is now working...
+    echo [%date% %time%] WSL marker exists, verifying installation >> "%LOG_FILE%"
+) else (
+    echo [*] First time running or marker cleaned
+    echo [%date% %time%] No WSL marker found >> "%LOG_FILE%"
 )
 
-REM Si llegamos aquí, WSL2 está funcionando
-echo [OK] WSL2 is active and working
-echo [%date% %time%] WSL2 verification PASSED >> "%LOG_FILE%"
-timeout /t 3 /nobreak >nul
+REM Test 1: Try wsl --version (most reliable test after restart)
+echo [*] Test 1: Running 'wsl --version' to verify WSL2...
+echo [%date% %time%] Test 1: wsl --version >> "%LOG_FILE%"
+wsl --version >>"%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [!] wsl --version failed
+    echo [%date% %time%] wsl --version FAILED >> "%LOG_FILE%"
+    
+    REM If marker exists, we already tried to install - something is wrong
+    if exist "%WSL_INSTALL_MARKER%" (
+        echo.
+        echo ============================================================
+        echo  ERROR: WSL2 Installation Failed
+        echo ============================================================
+        echo.
+        echo [X] WSL2 features should be active but aren't working
+        echo.
+        echo Possible causes:
+        echo  1. Virtualization not enabled in BIOS (most likely)
+        echo  2. Hyper-V conflicting with WSL2
+        echo  3. Windows needs another restart
+        echo.
+        echo Try these steps:
+        echo  1. Restart your computer again manually
+        echo  2. Check BIOS: enable CPU virtualization (VT-x or AMD-V)
+        echo  3. Run Windows Update and restart
+        echo  4. If still failing, install Hyper-V and try again
+        echo.
+        echo For manual help, visit:
+        echo  https://docs.microsoft.com/en-us/windows/wsl/install
+        echo.
+        del "%WSL_INSTALL_MARKER%"
+        pause
+        exit /b 1
+    )
+    
+    REM First time - need to enable WSL features
+    echo.
+    echo ============================================================
+    echo  WSL2 INSTALLATION REQUIRED
+    echo ============================================================
+    echo.
+    echo [*] WSL2 features are NOT activated
+    echo.
+    echo This will:
+    echo  1. Enable Windows Subsystem for Linux (WSL)
+    echo  2. Enable Virtual Machine Platform
+    echo  3. Restart your computer (you will lose unsaved work!)
+    echo.
+    echo Before continuing:
+    echo  [!] SAVE YOUR WORK
+    echo  [!] CLOSE ALL APPLICATIONS
+    echo.
+    echo After restart:
+    echo  [!] Run this script again
+    echo.
+    echo Press any key to proceed with enablement...
+    pause
+    
+    REM Mark that we're attempting installation
+    echo WSL installation attempted at %date% %time% > "%WSL_INSTALL_MARKER%"
+    
+    REM Enable WSL2 features with DISM
+    echo.
+    echo [*] Enabling Windows Subsystem for Linux feature...
+    echo [%date% %time%] Running DISM for WSL >> "%LOG_FILE%"
+    powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
+    
+    echo [*] Enabling Virtual Machine Platform feature...
+    echo [%date% %time%] Running DISM for Virtual Machine Platform >> "%LOG_FILE%"
+    powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart ^>^> ^"%LOG_FILE%^" 2^>^&1' -Verb RunAs -Wait"
+    
+    echo.
+    echo [OK] WSL2 features have been enabled
+    echo [%date% %time%] DISM features enabled, preparing restart >> "%LOG_FILE%"
+    echo.
+    echo ============================================================
+    echo  RESTART REQUIRED
+    echo ============================================================
+    echo.
+    echo [!] Your computer MUST restart for the changes to take effect
+    echo.
+    echo [*] Restarting in 10 seconds...
+    echo [*] Press Ctrl+C if you need to cancel
+    echo.
+    echo [%date% %time%] Initiating restart >> "%LOG_FILE%"
+    timeout /t 10 /nobreak
+    shutdown /r /t 0 /c "WSL2 features activated. Restarting system."
+    exit /b 0
+)
+
+REM If we get here, wsl --version worked!
+echo [OK] WSL2 is now active and working!
+echo [%date% %time%] WSL is working >> "%LOG_FILE%"
+
+REM Clean up marker file since WSL is now working
+if exist "%WSL_INSTALL_MARKER%" (
+    del "%WSL_INSTALL_MARKER%"
+    echo [OK] Removing installation marker - WSL2 confirmed working
+    echo [%date% %time%] Cleaned WSL marker >> "%LOG_FILE%"
+)
+
+REM Now check if Ubuntu is installed
+echo [*] Checking if Ubuntu is installed...
+echo [%date% %time%] Checking Ubuntu distribution >> "%LOG_FILE%"
+wsl -d Ubuntu -e echo "test" >nul 2>>"%LOG_FILE%"
+if errorlevel 1 (
+    echo [*] Ubuntu not installed, installing now...
+    echo [%date% %time%] Ubuntu not found, installing >> "%LOG_FILE%"
+    wsl --install -d Ubuntu --no-launch >>"%LOG_FILE%" 2>&1
+    
+    if errorlevel 1 (
+        echo [!] Could not auto-install Ubuntu
+        echo [*] No worries - Docker will handle this
+        echo [%date% %time%] Ubuntu auto-install failed >> "%LOG_FILE%"
+    ) else (
+        echo [OK] Ubuntu installed successfully
+        echo [%date% %time%] Ubuntu installed >> "%LOG_FILE%"
+    )
+) else (
+    echo [OK] Ubuntu is already installed
+    echo [%date% %time%] Ubuntu already installed >> "%LOG_FILE%"
+)
+
+echo [OK] WSL2 verification complete
+echo [%date% %time%] WSL2 CHECK PASSED >> "%LOG_FILE%"
+timeout /t 2 /nobreak >nul
 
 REM Check if Docker is installed
 where docker >nul 2>&1
