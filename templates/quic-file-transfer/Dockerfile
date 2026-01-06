@@ -14,7 +14,7 @@ COPY certs /certs
 
 # Instalar Tailscale + dependencias del sistema
 RUN apt-get update && \
-	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus firefox-esr xvfb && \
+	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus && \
 	rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 # Create app user

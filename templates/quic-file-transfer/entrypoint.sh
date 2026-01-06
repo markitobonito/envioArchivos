@@ -42,11 +42,5 @@ else
   echo "No tailscale status available inside container"
 fi
 
-# Iniciar Xvfb (virtual display) para Firefox
-echo "Iniciando Xvfb (virtual display para notificaciones)..."
-Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 &
-XVFB_PID=$!
-echo "Xvfb iniciado en display :99 (PID: $XVFB_PID)"
-
 # Exec the original command (run.py)
 exec python3 /run.py

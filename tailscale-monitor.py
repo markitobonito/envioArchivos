@@ -104,33 +104,52 @@ def reconnect_tailscale(auth_key):
         log_msg("[!] No hay TAILSCALE_AUTHKEY disponible")
         return False
     
+    import platform
+    os_type = platform.system()
+    
     log_msg("[*] Intentando reconectar a Tailscale...")
     
     try:
-        # Intentar solo logout con timeout muy bajo (2 seg)
-        # Si no funciona, ignorar y pasar directo a up
+        # Logout previo (opcional, por si estaba deslogueado)
         try:
-            subprocess.run(
-                ["sudo", "tailscale", "logout", "--accept-risk=lose-ssh-access"],
-                capture_output=True,
-                timeout=2  # Timeout muy bajo, no esperar
-            )
+            if os_type == "Windows":
+                # Windows: no necesita sudo
+                subprocess.run(
+                    ["tailscale", "logout", "--accept-risk=lose-ssh-access"],
+                    capture_output=True,
+                    timeout=2
+                )
+            else:
+                # macOS/Linux: necesita sudo
+                subprocess.run(
+                    ["sudo", "tailscale", "logout", "--accept-risk=lose-ssh-access"],
+                    capture_output=True,
+                    timeout=2
+                )
             log_msg("[*] Logout completado")
             time.sleep(1)
         except subprocess.TimeoutExpired:
             log_msg("[!] Logout timeout (ignorando, pasando a reconnect)")
-            # Ignorar timeout y pasar directo a up
         except Exception as e:
             log_msg(f"[!] Logout error: {e} (ignorando)")
         
         # Conectar con el auth key
-        # Si ya está conectado, this es idempotente
-        result = subprocess.run(
-            ["sudo", "tailscale", "up", f"--authkey={auth_key}", "--accept-routes", "--accept-dns"],
-            capture_output=True,
-            text=True,
-            timeout=15
-        )
+        if os_type == "Windows":
+            # Windows: no necesita sudo
+            result = subprocess.run(
+                ["tailscale", "up", f"--authkey={auth_key}", "--accept-routes", "--accept-dns"],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+        else:
+            # macOS/Linux: necesita sudo
+            result = subprocess.run(
+                ["sudo", "tailscale", "up", f"--authkey={auth_key}", "--accept-routes", "--accept-dns"],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
         
         if result.returncode == 0:
             log_msg("[✓] Reconexión exitosa")
@@ -146,22 +165,60 @@ def reconnect_tailscale(auth_key):
     except Exception as e:
         log_msg(f"[!] Excepción: {e}")
         return False
+    except Exception as e:
+        log_msg(f"[!] Excepción: {e}")
+        return False
 
 def ensure_tailscale_daemon():
     """Asegura que el daemon tailscaled esté corriendo"""
     try:
-        result = subprocess.run(
-            ["pgrep", "-x", "tailscaled"],
-            capture_output=True
-        )
+        import platform
+        os_type = platform.system()
         
-        if result.returncode != 0:
-            log_msg("[!] tailscaled no está corriendo, iniciando...")
-            subprocess.run(
-                ["sudo", "brew", "services", "start", "tailscale"],
+        # Verificar si el daemon está corriendo
+        daemon_running = False
+        
+        if os_type == "Windows":
+            # Windows: usar tasklist
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq tailscaled.exe"],
                 capture_output=True,
-                timeout=30
+                text=True
             )
+            daemon_running = "tailscaled.exe" in result.stdout
+        else:
+            # macOS/Linux: usar pgrep
+            result = subprocess.run(
+                ["pgrep", "-x", "tailscaled"],
+                capture_output=True
+            )
+            daemon_running = result.returncode == 0
+        
+        if not daemon_running:
+            log_msg("[!] tailscaled no está corriendo, iniciando...")
+            
+            if os_type == "Darwin":
+                # macOS: usar brew services
+                subprocess.run(
+                    ["sudo", "brew", "services", "start", "tailscale"],
+                    capture_output=True,
+                    timeout=30
+                )
+            elif os_type == "Windows":
+                # Windows: usar net start o GUI
+                subprocess.run(
+                    ["net", "start", "Tailscale"],
+                    capture_output=True,
+                    timeout=10
+                )
+            else:
+                # Linux: usar systemctl
+                subprocess.run(
+                    ["sudo", "systemctl", "start", "tailscaled"],
+                    capture_output=True,
+                    timeout=10
+                )
+            
             time.sleep(3)
     except Exception as e:
         log_msg(f"[!] Error iniciando tailscaled: {e}")

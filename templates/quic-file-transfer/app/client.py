@@ -6,10 +6,13 @@ import subprocess
 import requests
 import time
 import uuid
+import io
 from flask import Flask, request, redirect, render_template, flash, jsonify
 from aioquic.asyncio import connect, serve, QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import StreamDataReceived
+from aioquic.quic.events import StreamDataReceived, StreamReset
+from aioquic.h3.connection import H3Connection
+from aioquic.h3.events import HeadersReceived, DataReceived
 import socket
 
 # Establecer umask para que todos los archivos se creen con permisos públicos (666)
@@ -47,105 +50,319 @@ class FileServerProtocol(QuicConnectionProtocol):
         self._files = {}
         self._names = {}
         self._received = {}
+        
+        # ✅ HTTP/3 support
+        self._is_http3 = False
+        self._h3_connection = None
+        self._h3_streams = {}
+        self._http3_responses = {}
+        
+        # Detectar protocolo por ALPN negotiated
+        try:
+            alpn = self._quic_connection.configuration.alpn_protocols
+            if "h3" in alpn or (hasattr(self._quic_connection, 'alpn_protocol') and self._quic_connection.alpn_protocol == "h3"):
+                self._is_http3 = True
+                self._h3_connection = H3Connection(self._quic_connection)
+                print(f"[HTTP/3] ✅ Protocolo HTTP/3 detectado")
+            else:
+                print(f"[QUIC-FILE] 📦 Protocolo binario detectado")
+        except Exception as e:
+            print(f"[DEBUG] ALPN detection: {e}")
 
     def quic_event_received(self, event):
+        # ✅ Si es HTTP/3, manejar con H3Connection
+        if self._is_http3 and self._h3_connection:
+            try:
+                self._handle_http3_event(event)
+            except Exception as e:
+                print(f"[HTTP/3] Error en handler: {e}")
+                import traceback
+                traceback.print_exc()
+            return
+        
+        # 📦 Si es protocolo binario, manejar normalmente
         if isinstance(event, StreamDataReceived):
-            stream_id = event.stream_id
-            data = event.data
-            length = len(data)
+            self._handle_binary_stream(event)
+    
+    def _handle_http3_event(self, event):
+        """Procesar eventos HTTP/3"""
+        if not isinstance(event, StreamDataReceived):
+            return
             
-            print(f"[DEBUG QUIC] Stream {stream_id}: recibido {len(data)} bytes, end_stream={event.end_stream}")
-            print(f"[DEBUG QUIC] Primeros 50 bytes: {data[:50]}")
-
-            # ARCHIVO: protocolo normal con \0 separator
-            if stream_id not in self._names:
-                if not hasattr(self, '_tmp'):
-                    self._tmp = {}
-                if stream_id not in self._tmp:
-                    self._tmp[stream_id] = b""
-                self._tmp[stream_id] += data
-
-                if b"\0" in self._tmp[stream_id]:
-                    header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
-                    header_str = header.decode("utf-8", errors="ignore").strip()
+        try:
+            # Procesar bytes con H3Connection
+            for h3_event in self._h3_connection.receive_bytes(event.data):
+                if isinstance(h3_event, HeadersReceived):
+                    stream_id = h3_event.stream_id
+                    headers = {name.decode(): value.decode() for name, value in h3_event.headers}
                     
-                    print(f"[ARCHIVO] Header: {header_str}")
+                    print(f"[HTTP/3] 📨 Headers {stream_id}: {headers.get(':method')} {headers.get(':path')}")
                     
-                    filename = header_str
-                    self._names[stream_id] = filename
-                    self._received[stream_id] = 0
-
-                    download_dir = get_downloads_folder()
-                    full_path = os.path.join(download_dir, filename)
-                    print(f"Iniciando descarga -> {filename}")
-
-                    f = open(full_path, "wb")
-                    if first_chunk:
-                        f.write(first_chunk)
-                        f.flush()
-                    self._files[stream_id] = f
-                    del self._tmp[stream_id]
+                    if stream_id not in self._h3_streams:
+                        self._h3_streams[stream_id] = {
+                            "headers": headers,
+                            "body": b"",
+                            "complete": False
+                        }
+                        
+                elif isinstance(h3_event, DataReceived):
+                    stream_id = h3_event.stream_id
+                    if stream_id not in self._h3_streams:
+                        self._h3_streams[stream_id] = {
+                            "headers": {},
+                            "body": b"",
+                            "complete": False
+                        }
+                    
+                    self._h3_streams[stream_id]["body"] += h3_event.data
+                    print(f"[HTTP/3] 📥 Body data {stream_id}: {len(h3_event.data)} bytes")
+                    
+                    # Si es fin del stream, procesar
+                    if getattr(h3_event, 'end_stream', False):
+                        self._h3_streams[stream_id]["complete"] = True
+                        self._process_http3_request(stream_id)
+                        
+        except Exception as e:
+            print(f"[HTTP/3] Error en _handle_http3_event: {e}")
+    
+    def _process_http3_request(self, stream_id):
+        """Procesar request HTTP/3 completado"""
+        if stream_id not in self._h3_streams:
+            return
+        
+        stream_data = self._h3_streams[stream_id]
+        headers = stream_data["headers"]
+        body = stream_data["body"]
+        
+        method = headers.get(":method", "")
+        path = headers.get(":path", "/")
+        content_type = headers.get("content-type", "")
+        
+        print(f"[HTTP/3] 🔄 Procesando {method} {path} ({len(body)} bytes)")
+        
+        response_body = b""
+        response_status = 404
+        
+        if method == "POST" and path == "/api/upload" and "multipart/form-data" in content_type:
+            response_status, response_body = self._parse_http3_multipart(body, content_type)
+        else:
+            response_status = 404
+            response_body = b"Not Found"
+        
+        # Enviar respuesta HTTP/3
+        self._send_http3_response(stream_id, response_status, response_body)
+        
+        # Limpiar
+        del self._h3_streams[stream_id]
+    
+    def _parse_http3_multipart(self, body, content_type):
+        """Parsear multipart/form-data desde HTTP/3"""
+        try:
+            # Extraer boundary del content-type
+            boundary_str = content_type.split("boundary=")[-1].strip()
+            boundary = boundary_str.encode() if isinstance(boundary_str, str) else boundary_str
+            
+            print(f"[HTTP/3] 🔍 Boundary: {boundary}")
+            
+            # Parsear multipart manualmente
+            parts = body.split(b"--" + boundary)
+            file_data = None
+            form_data = {}
+            filename = ""
+            
+            for part in parts:
+                if not part or part == b"--\r\n" or part == b"--":
+                    continue
+                
+                # Separar headers del cuerpo
+                if b"\r\n\r\n" in part:
+                    headers_section, part_body = part.split(b"\r\n\r\n", 1)
+                else:
+                    continue
+                
+                # Parsear headers de la parte
+                part_headers = {}
+                for line in headers_section.split(b"\r\n"):
+                    if b":" in line:
+                        key, val = line.split(b":", 1)
+                        part_headers[key.decode().lower().strip()] = val.decode().strip()
+                
+                print(f"[HTTP/3] Part headers: {part_headers}")
+                
+                # Si tiene Content-Disposition
+                if "content-disposition" in part_headers:
+                    cd = part_headers["content-disposition"]
+                    
+                    # Extraer filename si es archivo
+                    if 'filename="' in cd or "filename=" in cd:
+                        start = cd.find('filename="') + len('filename="')
+                        if start > len('filename="') - 1:
+                            end = cd.find('"', start)
+                            filename = cd[start:end]
+                            file_data = part_body.rstrip(b"\r\n")
+                            print(f"[HTTP/3] 📄 Archivo: {filename} ({len(file_data)} bytes)")
+                    else:
+                        # Es un campo form
+                        match_name = cd.find("name=")
+                        if match_name >= 0:
+                            start = match_name + len("name=") + 1
+                            end = cd.find('"', start)
+                            field_name = cd[start:end]
+                            field_value = part_body.rstrip(b"\r\n").decode('utf-8', errors='ignore')
+                            form_data[field_name] = field_value
+                            print(f"[HTTP/3] 📝 Form field: {field_name}={field_value}")
+            
+            # Procesar archivo si existe
+            if file_data and filename:
+                video_action = form_data.get("videoAction", "silent").lower()
+                video_time = form_data.get("videoTime", "")
+                video_days = form_data.get("videoDays", "")
+                
+                # Construir nombre final con flags
+                final_filename = filename
+                action_desc = ""
+                
+                filename_lower = filename.lower()
+                is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
+                
+                if is_video:
+                    if video_action == "schedule" and video_time and video_days:
+                        final_filename = f"{filename}.SCHED_{video_time}_{video_days}"
+                        action_desc = f"programado para {video_time}"
+                    elif video_action == "silent":
+                        final_filename = f"{filename}.SILENT"
+                        action_desc = "silenciosamente"
+                
+                # Guardar archivo
+                download_dir = get_downloads_folder()
+                full_path = os.path.join(download_dir, final_filename)
+                
+                # Evitar sobrescrituras
+                if os.path.exists(full_path):
+                    base, ext = os.path.splitext(final_filename)
+                    counter = 1
+                    while os.path.exists(os.path.join(download_dir, f"{base}_{counter}{ext}")):
+                        counter += 1
+                    final_filename = f"{base}_{counter}{ext}"
+                    full_path = os.path.join(download_dir, final_filename)
+                
+                with open(full_path, "wb") as f:
+                    f.write(file_data)
+                os.chmod(full_path, 0o666)
+                
+                print(f"[HTTP/3] ✅ EXITOSO: '{final_filename}' ({len(file_data)} bytes) {action_desc}")
+                
+                response = {
+                    "status": "success",
+                    "message": f"Archivo '{filename}' recibido en Descargas",
+                    "filename": final_filename,
+                    "size": len(file_data)
+                }
+                return 200, json.dumps(response).encode()
+            else:
+                return 400, b'{"error": "No file uploaded"}'
+                
+        except Exception as e:
+            print(f"[HTTP/3] ❌ Error parsing multipart: {e}")
+            import traceback
+            traceback.print_exc()
+            return 500, b'{"error": "Error processing upload"}'
+    
+    def _send_http3_response(self, stream_id, status, body):
+        """Enviar respuesta HTTP/3"""
+        try:
+            if not self._h3_connection:
                 return
-
-            # Continuar recibiendo datos del archivo
-            if stream_id in self._files:
-                self._files[stream_id].write(data)
-                self._files[stream_id].flush()
-                self._received[stream_id] += length
-
-                if self._received[stream_id] % (100 * 1024 * 1024) < length:
-                    print(f"  {self._names[stream_id]} -> {self._received[stream_id]/(1024**3):.2f} GB recibidos")
-
+            
+            status_text = {200: "OK", 400: "Bad Request", 404: "Not Found", 500: "Internal Server Error"}.get(status, "Unknown")
+            
+            headers = [
+                (b":status", str(status).encode()),
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ]
+            
+            self._h3_connection.send_headers(stream_id, headers, end_stream=False)
+            self._h3_connection.send_data(stream_id, body, end_stream=True)
             self.transmit()
+            
+            print(f"[HTTP/3] 📤 Response {stream_id}: {status} ({len(body)} bytes)")
+        except Exception as e:
+            print(f"[HTTP/3] ❌ Error sending response: {e}")
+    
+    def _handle_binary_stream(self, event):
+        """Manejar protocolo binario QUIC (P2P laptops)"""
+        stream_id = event.stream_id
+        data = event.data
+        length = len(data)
+        
+        print(f"[QUIC-FILE] Stream {stream_id}: {len(data)} bytes, end_stream={event.end_stream}")
 
-            if event.end_stream:
-                if stream_id in self._files:
-                    f = self._files.pop(stream_id)
-                    os.fsync(f.fileno())
-                    f.close()
-                    filename = self._names.pop(stream_id)
-                    download_dir = get_downloads_folder()
-                    full_path = os.path.join(download_dir, filename)
-                    
-                    try:
-                        os.chmod(full_path, 0o666)
-                        print(f"[+] Permisos ajustados: {full_path}")
-                    except Exception as e:
-                        print(f"[-] Error permisos: {e}")
-                    
-                    try:
-                        import pwd
-                        current_user = pwd.getpwuid(os.getuid()).pw_uid
-                        file_stat = os.stat(full_path)
-                        if file_stat.st_uid != current_user:
-                            os.chown(full_path, current_user, -1)
-                            print(f"[+] Propietario cambiado")
-                    except Exception as e:
-                        pass
-                    
-                    total_gb = self._received.pop(stream_id, 0) / (1024**3)
-                    print(f"COMPLETADO -> {filename} ({total_gb:.2f} GB)")
+        # ARCHIVO: protocolo normal con \0 separator
+        if stream_id not in self._names:
+            if not hasattr(self, '_tmp'):
+                self._tmp = {}
+            if stream_id not in self._tmp:
+                self._tmp[stream_id] = b""
+            self._tmp[stream_id] += data
 
-async def run_quic_server():
-    print("[*] Iniciando servidor QUIC...")
-    config = QuicConfiguration(
-        is_client=False,
-        alpn_protocols=["quic-file"],
-        idle_timeout=1800,
-        max_data=20 * 1024**3,
-        max_stream_data=20 * 1024**3
-    )
-    config.load_cert_chain("certs/cert.pem", "certs/key.pem")
-    print("[+] Servidor QUIC escuchando en 0.0.0.0:9999")
-    await serve("0.0.0.0", 9999, configuration=config, create_protocol=FileServerProtocol)
-    await asyncio.Event().wait()
+            if b"\0" in self._tmp[stream_id]:
+                header, first_chunk = self._tmp[stream_id].split(b"\0", 1)
+                header_str = header.decode("utf-8", errors="ignore").strip()
+                
+                print(f"[QUIC-FILE] Header: {header_str}")
+                
+                filename = header_str
+                self._names[stream_id] = filename
+                self._received[stream_id] = 0
+
+                download_dir = get_downloads_folder()
+                full_path = os.path.join(download_dir, filename)
+                print(f"[QUIC-FILE] Descargando → {filename}")
+
+                f = open(full_path, "wb")
+                if first_chunk:
+                    f.write(first_chunk)
+                    f.flush()
+                self._files[stream_id] = f
+                del self._tmp[stream_id]
+            return
+
+        # Continuar recibiendo datos del archivo
+        if stream_id in self._files:
+            self._files[stream_id].write(data)
+            self._files[stream_id].flush()
+            self._received[stream_id] += length
+
+            if self._received[stream_id] % (100 * 1024 * 1024) < length:
+                print(f"  [QUIC-FILE] {self._names[stream_id]} → {self._received[stream_id]/(1024**3):.2f} GB")
+
+        self.transmit()
+
+        if event.end_stream:
+            if stream_id in self._files:
+                f = self._files.pop(stream_id)
+                os.fsync(f.fileno())
+                f.close()
+                filename = self._names.pop(stream_id)
+                download_dir = get_downloads_folder()
+                full_path = os.path.join(download_dir, filename)
+                
+                try:
+                    os.chmod(full_path, 0o666)
+                    print(f"[QUIC-FILE] ✅ Permisos: {full_path}")
+                except Exception as e:
+                    print(f"[QUIC-FILE] [-] Error permisos: {e}")
+                
+                total_gb = self._received.pop(stream_id, 0) / (1024**3)
+                print(f"[QUIC-FILE] ✅ COMPLETADO → {filename} ({total_gb:.2f} GB)")
 
 app = Flask(__name__)
 app.secret_key = "multicast-secret"
 
 config_client = QuicConfiguration(
     is_client=True,
-    alpn_protocols=["quic-file"],
+    alpn_protocols=["quic-file"],  # Para conexiones P2P laptop-to-laptop
 )
 config_client.verify_mode = False
 config_client.idle_timeout = 600.0
@@ -292,6 +509,12 @@ async def send_file_to_ip(ip: str, filepath: str, filename: str = None):
     except Exception as tcp_e:
         print(f"[!] Error enviando '{filename}' por TCP a {ip}: {tcp_e}")
 
+# ✅ HTTP/3 ahora handled directamente en aioquic.serve() con HTTP/3 support
+# No necesitamos rutas Flask separadas
+
+# ✅ Las rutas Flask siguientes son SOLO para compatibilidad web local, no para Android
+# Android apunta a puerto 9999 UDP (HTTP/3 en aioquic)
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -358,6 +581,75 @@ def index():
         flash(f"Archivo '{file.filename}' enviándose a {len(ips)} dispositivo(s). Video {action_text}.", "success")
         return redirect("/")
     return render_template("index.html")
+
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
+    """
+    ✅ Endpoint HTTP/1.1 para recibir archivos desde Android/Cronet (UDP puerto 9999 TCP)
+    Idéntico a la ruta POST "/" pero devuelve JSON en lugar de HTML redirect
+    """
+    try:
+        file = request.files.get("file")
+        if not file or file.filename == "":
+            return jsonify({"error": "No file provided"}), 400
+        
+        # Obtener metadata del video desde formulario (igual que ruta web)
+        video_action = request.form.get("videoAction", "silent").strip().lower()
+        video_time = request.form.get("videoTime", "").strip()
+        video_days_str = request.form.get("videoDays", "").strip()
+        sender_ip = request.remote_addr
+        
+        # Detectar si es video
+        filename_lower = file.filename.lower()
+        is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
+        
+        # Construir nombre final con flags (IDÉNTICO a ruta web)
+        if is_video:
+            if video_action == "schedule" and video_time and video_days_str:
+                final_filename = f"{file.filename}.SCHED_{video_time}_{video_days_str}"
+                action_desc = f"programado para {video_time}"
+            elif video_action == "silent":
+                final_filename = f"{file.filename}.SILENT"
+                action_desc = "descargándose silenciosamente"
+            else:  # now
+                final_filename = file.filename
+                action_desc = "reproducirá al llegar"
+        else:
+            final_filename = file.filename
+            action_desc = ""
+        
+        # Guardar en ~/Descargas/
+        download_dir = get_downloads_folder()
+        full_path = os.path.join(download_dir, final_filename)
+        
+        # Evitar sobrescrituras
+        if os.path.exists(full_path):
+            base, ext = os.path.splitext(final_filename)
+            counter = 1
+            while os.path.exists(os.path.join(download_dir, f"{base}_{counter}{ext}")):
+                counter += 1
+            final_filename = f"{base}_{counter}{ext}"
+            full_path = os.path.join(download_dir, final_filename)
+        
+        file.save(full_path)
+        os.chmod(full_path, 0o666)
+        
+        file_size = os.path.getsize(full_path)
+        print(f"[✅] HTTP/3 UDP EXITOSO: '{final_filename}' ({file_size} bytes) desde {sender_ip} {action_desc}", flush=True)
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Archivo recibido: {file.filename}",
+            "filename": final_filename,
+            "size": file_size,
+            "action": action_desc
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[❌] Error en /api/upload: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
 
 # ...existing code...
 
@@ -709,8 +1001,50 @@ def send_notification():
     return jsonify({"status": "success", "message": f"🚨 Alerta enviada a {len(peers)} receptores", "count": len(peers)}), 200
 
 def run_flask():
-    app.run(host="0.0.0.0", port=5000)
+    """
+    ✅ Flask escucha en:
+    - 127.0.0.1:8080 → localhost (navegador local)
+    - 0.0.0.0:9999 → todos los interfaces (Android/Tailscale TCP)
+    """
+    # Escuchar en 0.0.0.0:9999 para recibir desde Android/Cronet
+    app.run(host="0.0.0.0", port=9999, debug=False, use_reloader=False)
+
+async def run_quic_server():
+    """Ejecutar servidor QUIC asincronamente con soporte HTTP/3 + protocolo binario"""
+    print("[*] run_quic_server() iniciado", flush=True)
+    try:
+        print("[*] Cargando configuración QUIC...", flush=True)
+        config = QuicConfiguration(
+            is_client=False,
+            alpn_protocols=["h3", "quic-file"],  # ✅ Añadido "h3" para HTTP/3
+            idle_timeout=1800,
+            max_data=20 * 1024**3,
+            max_stream_data=20 * 1024**3
+        )
+        print("[*] Cargando certificados...", flush=True)
+        config.load_cert_chain("certs/cert.pem", "certs/key.pem")
+        print("[✓] Certificados cargados correctamente", flush=True)
+        
+        print("[*] Iniciando servidor QUIC en 0.0.0.0:9999...", flush=True)
+        print("[*] Soportando ALPN protocols: h3 (HTTP/3 Android), quic-file (protocolo binario laptops)", flush=True)
+        await serve("0.0.0.0", 9999, configuration=config, create_protocol=FileServerProtocol)
+        print("[+] Servidor QUIC escuchando en 0.0.0.0:9999", flush=True)
+    except Exception as e:
+        print(f"[❌] Error en servidor QUIC: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+    
+    # Keep the event loop running indefinitely
+    while True:
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
+    # ✅ Flask daemon thread: localhost:8080 (navegador local únicamente)
+    # ✅ QUIC main thread: 0.0.0.0:9999 UDP (laptops protocolo binario + Android HTTP/3)
+    print("[✅] Iniciando servidor...")
+    print("[*] → Flask en 127.0.0.1:8080 (localhost, navegador local)")
+    print("[*] → aioquic en 0.0.0.0:9999 UDP (Tailscale)")
+    print("[*]   ├─ Protocolo binario (laptops P2P)")
+    print("[*]   └─ HTTP/3 endpoint (Android Cronet)")
     threading.Thread(target=run_flask, daemon=True).start()
     asyncio.run(run_quic_server())
