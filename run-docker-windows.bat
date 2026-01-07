@@ -50,17 +50,31 @@ if errorlevel 1 (
     pause
     
     echo.
+    echo [*] Creating temporary DISM execution script...
+    
+    REM Create a VBScript to run DISM with admin privileges
+    (
+        echo Set UAC = CreateObject("Shell.Application"^)
+        echo UAC.ShellExecute "cmd.exe", "/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart", "", "runas", 1
+        echo WScript.Sleep 3000
+    ) > "%TEMP%\run_dism_wsl.vbs"
+    
     echo [*] Installing WSL feature...
     echo [%date% %time%] Starting DISM for WSL >> "%LOG_FILE%"
+    cscript.exe "%TEMP%\run_dism_wsl.vbs"
+    timeout /t 3 /nobreak
     
-    powershell -NoProfile -Command "Start-Process 'dism.exe' -ArgumentList '/online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart' -Verb RunAs -Wait"
-    echo [OK] WSL feature installation completed
+    REM Create VBScript for Virtual Machine Platform
+    (
+        echo Set UAC = CreateObject("Shell.Application"^)
+        echo UAC.ShellExecute "cmd.exe", "/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart", "", "runas", 1
+        echo WScript.Sleep 3000
+    ) > "%TEMP%\run_dism_vmp.vbs"
     
     echo [*] Installing Virtual Machine Platform...
     echo [%date% %time%] Starting DISM for Virtual Machine Platform >> "%LOG_FILE%"
-    
-    powershell -NoProfile -Command "Start-Process 'dism.exe' -ArgumentList '/online /enable-feature /featurename:VirtualMachinePlatform /all /norestart' -Verb RunAs -Wait"
-    echo [OK] Virtual Machine Platform installation completed
+    cscript.exe "%TEMP%\run_dism_vmp.vbs"
+    timeout /t 3 /nobreak
     
     echo.
     echo [OK] WSL2 installation commands completed
