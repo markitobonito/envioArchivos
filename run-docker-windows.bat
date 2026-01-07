@@ -7,6 +7,18 @@ REM ============================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+REM ============================================================
+REM  ELEVATE TO ADMIN IF NEEDED
+REM ============================================================
+
+REM Check if running as administrator
+net session >nul 2>&1
+if errorlevel 1 (
+    echo [*] Requesting administrator privileges...
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs" 
+    exit /b 0
+)
+
 REM Create log file
 set LOG_FILE=%TEMP%\setup-debug.log
 set SCRIPT_DIR=%~dp0
@@ -50,34 +62,16 @@ if errorlevel 1 (
     pause
     
     echo.
-    echo [*] Creating temporary DISM execution script...
-    
-    REM Create a VBScript to run DISM with admin privileges
-    (
-        echo Set UAC = CreateObject("Shell.Application"^)
-        echo UAC.ShellExecute "cmd.exe", "/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart", "", "runas", 1
-        echo WScript.Sleep 3000
-    ) > "%TEMP%\run_dism_wsl.vbs"
-    
     echo [*] Installing WSL feature...
-    echo [%date% %time%] Starting DISM for WSL >> "%LOG_FILE%"
-    cscript.exe "%TEMP%\run_dism_wsl.vbs"
-    timeout /t 3 /nobreak
-    
-    REM Create VBScript for Virtual Machine Platform
-    (
-        echo Set UAC = CreateObject("Shell.Application"^)
-        echo UAC.ShellExecute "cmd.exe", "/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart", "", "runas", 1
-        echo WScript.Sleep 3000
-    ) > "%TEMP%\run_dism_vmp.vbs"
+    echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >> "%LOG_FILE%"
+    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >>"%LOG_FILE%" 2>&1
     
     echo [*] Installing Virtual Machine Platform...
-    echo [%date% %time%] Starting DISM for Virtual Machine Platform >> "%LOG_FILE%"
-    cscript.exe "%TEMP%\run_dism_vmp.vbs"
-    timeout /t 3 /nobreak
+    echo [%date% %time%] Running: dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >> "%LOG_FILE%"
+    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >>"%LOG_FILE%" 2>&1
     
     echo.
-    echo [OK] WSL2 installation commands completed
+    echo [OK] WSL2 features enabled successfully
     echo [%date% %time%] DISM commands completed >> "%LOG_FILE%"
     echo.
     echo [*] Restarting in 10 seconds...
