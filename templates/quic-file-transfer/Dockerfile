@@ -12,7 +12,7 @@ COPY app ./app
 COPY certs ./certs
 COPY certs /certs
 
-# Instalar Tailscale + dependencias del sistema
+# Instalar dependencias del sistema
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends curl ca-certificates gnupg2 iproute2 dbus && \
 	rm -rf /var/lib/apt/lists/* /var/cache/apt/*

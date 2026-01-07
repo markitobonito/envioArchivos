@@ -1,184 +1,29 @@
 {
-  "Version": "1.92.3-t9a08e8f1c",
-  "TUN": true,
-  "BackendState": "Running",
-  "HaveNodeKey": true,
-  "AuthURL": "",
-  "TailscaleIPs": [
-    "100.125.58.28",
-    "fd7a:115c:a1e0::3f35:3a1c"
-  ],
-  "Self": {
-    "ID": "n9YCAASGKK11CNTRL",
-    "PublicKey": "nodekey:6b4dc0e06f7f9a6414ca1ad57a6a3d397ba8dea7e7d10f2c7516eb6c5243b779",
-    "HostName": "MacBook-Air-de-markito",
-    "DNSName": "macbook-air-de-markito.tailfb58ed.ts.net.",
-    "OS": "macOS",
-    "UserID": 8482722947360927,
-    "TailscaleIPs": [
-      "100.125.58.28",
-      "fd7a:115c:a1e0::3f35:3a1c"
-    ],
-    "AllowedIPs": [
-      "100.125.58.28/32",
-      "fd7a:115c:a1e0::3f35:3a1c/128"
-    ],
-    "Addrs": [
-      "127.0.0.1:51539",
-      "[::1]:51539",
-      "[fe80::1]:51539"
-    ],
-    "CurAddr": "",
-    "Relay": "mia",
-    "PeerRelay": "",
-    "RxBytes": 0,
-    "TxBytes": 0,
-    "Created": "2025-12-22T00:51:21.675891193Z",
-    "LastWrite": "0001-01-01T00:00:00Z",
-    "LastSeen": "0001-01-01T00:00:00Z",
-    "LastHandshake": "0001-01-01T00:00:00Z",
-    "Online": false,
-    "ExitNode": false,
-    "ExitNodeOption": false,
-    "Active": false,
-    "PeerAPIURL": [
-      "http://100.125.58.28:40999",
-      "http://[fd7a:115c:a1e0::3f35:3a1c]:64607"
-    ],
-    "TaildropTarget": 0,
-    "NoFileSharingReason": "",
-    "Capabilities": [
-      "HTTPS://TAILSCALE.COM/s/DEPRECATED-NODE-CAPS#see-https://github.com/tailscale/tailscale/issues/11508",
-      "https://tailscale.com/cap/file-sharing",
-      "https://tailscale.com/cap/is-admin",
-      "https://tailscale.com/cap/is-owner",
-      "https://tailscale.com/cap/ssh",
-      "https://tailscale.com/cap/tailnet-lock",
-      "probe-udp-lifetime",
-      "ssh-behavior-v1",
-      "ssh-env-vars",
-      "store-appc-routes",
-      "tailnet-display-name"
-    ],
-    "CapMap": {
-      "https://tailscale.com/cap/file-sharing": null,
-      "https://tailscale.com/cap/is-admin": null,
-      "https://tailscale.com/cap/is-owner": null,
-      "https://tailscale.com/cap/ssh": null,
-      "https://tailscale.com/cap/tailnet-lock": null,
-      "probe-udp-lifetime": null,
-      "ssh-behavior-v1": null,
-      "ssh-env-vars": null,
-      "store-appc-routes": null,
-      "tailnet-display-name": [
-        "nash2207@hotmail.com"
-      ]
-    },
-    "InNetworkMap": true,
-    "InMagicSock": false,
-    "InEngine": false,
-    "KeyExpiry": "2026-07-02T12:00:53Z"
-  },
-  "Health": [
-    "Network equipment from \"Fortinet\" may be blocking Tailscale traffic on this network. Connect to another network, or contact your network administrator for assistance.",
-    "Unable to connect to the Tailscale coordination server to synchronize the state of your tailnet. Peer reachability might degrade over time."
-  ],
-  "MagicDNSSuffix": "tailfb58ed.ts.net",
-  "CurrentTailnet": {
-    "Name": "nash2207@hotmail.com",
-    "MagicDNSSuffix": "tailfb58ed.ts.net",
-    "MagicDNSEnabled": true
-  },
-  "CertDomains": null,
   "Peer": {
-    "nodekey:2d7276e956dfb27bb3c41f47d9e2a1c4d26a6f4d3d78fd135fd7c07da357ee21": {
-      "ID": "ny1NR1JcnY11CNTRL",
-      "PublicKey": "nodekey:2d7276e956dfb27bb3c41f47d9e2a1c4d26a6f4d3d78fd135fd7c07da357ee21",
-      "HostName": "localhost",
-      "DNSName": "zte-z2450.tailfb58ed.ts.net.",
-      "OS": "android",
-      "UserID": 8482722947360927,
+    "6352852544226513": {
+      "HostName": "marco-hp-laptop-15-da0xxx.tailfb58ed.ts.net",
       "TailscaleIPs": [
-        "100.87.238.34",
-        "fd7a:115c:a1e0::a335:ee22"
+        "100.88.92.3"
       ],
-      "AllowedIPs": [
-        "100.87.238.34/32",
-        "fd7a:115c:a1e0::a335:ee22/128"
-      ],
-      "Addrs": null,
-      "CurAddr": "",
-      "Relay": "mia",
-      "PeerRelay": "",
-      "RxBytes": 0,
-      "TxBytes": 0,
-      "Created": "2025-12-31T04:24:52.2687458Z",
-      "LastWrite": "2026-01-02T06:11:16.273827583-05:00",
-      "LastSeen": "2026-01-04T08:03:32.1Z",
-      "LastHandshake": "0001-01-01T00:00:00Z",
       "Online": false,
-      "ExitNode": false,
-      "ExitNodeOption": false,
-      "Active": false,
-      "PeerAPIURL": [
-        "http://100.87.238.34:1",
-        "http://[fd7a:115c:a1e0::a335:ee22]:1"
-      ],
-      "TaildropTarget": 5,
-      "NoFileSharingReason": "",
-      "InNetworkMap": true,
-      "InMagicSock": true,
-      "InEngine": false,
-      "KeyExpiry": "2026-06-29T04:24:52Z"
+      "InMagicSock": false,
+      "InNetworkMap": true
     },
-    "nodekey:90a51e8c1bcf44a8abaf429cba75d0979edbd07416104f29e156d88019644459": {
-      "ID": "nWdg1WfDcr11CNTRL",
-      "PublicKey": "nodekey:90a51e8c1bcf44a8abaf429cba75d0979edbd07416104f29e156d88019644459",
-      "HostName": "marco-HP-Laptop-15-da0xxx",
-      "DNSName": "marco-hp-laptop-15-da0xxx.tailfb58ed.ts.net.",
-      "OS": "linux",
-      "UserID": 8482722947360927,
+    "4070658387855820": {
+      "HostName": "zte-z2450.tailfb58ed.ts.net",
       "TailscaleIPs": [
-        "100.88.92.3",
-        "fd7a:115c:a1e0::f135:5c03"
+        "100.87.238.34"
       ],
-      "AllowedIPs": [
-        "100.88.92.3/32",
-        "fd7a:115c:a1e0::f135:5c03/128"
-      ],
-      "Addrs": null,
-      "CurAddr": "",
-      "Relay": "mia",
-      "PeerRelay": "",
-      "RxBytes": 0,
-      "TxBytes": 0,
-      "Created": "2025-12-22T01:59:03.947044984Z",
-      "LastWrite": "0001-01-01T00:00:00Z",
-      "LastSeen": "2026-01-06T01:21:54.1Z",
-      "LastHandshake": "0001-01-01T00:00:00Z",
       "Online": false,
-      "ExitNode": false,
-      "ExitNodeOption": false,
-      "Active": false,
-      "PeerAPIURL": [
-        "http://100.88.92.3:58872",
-        "http://[fd7a:115c:a1e0::f135:5c03]:48523"
-      ],
-      "TaildropTarget": 5,
-      "NoFileSharingReason": "",
-      "InNetworkMap": true,
-      "InMagicSock": true,
-      "InEngine": false,
-      "KeyExpiry": "2026-07-01T05:29:12Z"
+      "InMagicSock": false,
+      "InNetworkMap": true
     }
   },
-  "User": {
-    "8482722947360927": {
-      "ID": 8482722947360927,
-      "LoginName": "nash2207@hotmail.com",
-      "DisplayName": "marko mART",
-      "ProfilePicURL": "https://lh3.googleusercontent.com/a/ACg8ocI2KL6EEXwkqPZ_rynycDr7FnBmkAFgXwAKA656CJz8JPkSNA=s96-c"
-    }
+  "Self": {
+    "TailscaleIPs": [
+      "100.125.58.28"
+    ],
+    "HostName": "macbook-air-de-markito.tailfb58ed.ts.net"
   },
-  "ClientVersion": null
+  "Version": "tailscale-api-v2"
 }

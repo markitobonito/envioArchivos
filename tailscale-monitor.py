@@ -10,6 +10,7 @@ import sys
 import json
 from pathlib import Path
 from datetime import datetime
+import requests
 
 def log_msg(msg):
     """Log con timestamp"""
@@ -33,6 +34,102 @@ def get_auth_key():
     except Exception as e:
         log_msg(f"[!] Error leyendo .env: {e}")
     return None
+
+def get_api_key():
+    """Lee el TAILSCALE_API_KEY del .env"""
+    home = os.path.expanduser("~")
+    env_file = Path(home) / "Documents/prr/envioArchivos/templates/quic-file-transfer/.env"
+    
+    try:
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("TAILSCALE_API_KEY="):
+                    return line.split("=", 1)[1].strip()
+    except:
+        pass
+    return None
+
+def get_tailnet():
+    """Lee el TAILNET del .env"""
+    home = os.path.expanduser("~")
+    env_file = Path(home) / "Documents/prr/envioArchivos/templates/quic-file-transfer/.env"
+    
+    try:
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("TAILNET="):
+                    return line.split("=", 1)[1].strip()
+    except:
+        pass
+    return None
+
+def update_json_from_api():
+    """Obtiene peers desde API REST de Tailscale (FUENTE DE VERDAD EN NUBE)"""
+    api_key = get_api_key()
+    tailnet = get_tailnet()
+    
+    if not api_key or not tailnet:
+        return False
+    
+    try:
+        home = os.path.expanduser("~")
+        url = f"https://api.tailscale.com/api/v2/tailnet/{tailnet}/devices"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            log_msg(f"[!] API error {response.status_code}")
+            return False
+        
+        devices = response.json().get("devices", [])
+        
+        # Construir JSON en formato compatible con client.py
+        json_data = {
+            "Peer": {},
+            "Self": {"TailscaleIPs": []},
+            "Version": "tailscale-api-v2"
+        }
+        
+        peer_count = 0
+        for device in devices:
+            device_name = device.get("name", "?")
+            ips = device.get("addresses", [])
+            if not ips:
+                continue
+            
+            ip = ips[0].split("/")[0] if "/" in ips[0] else ips[0]
+            
+            # Determinar si es el Self (macbook)
+            if "macbook" in device_name.lower():
+                json_data["Self"]["HostName"] = device_name
+                json_data["Self"]["TailscaleIPs"] = [ip]
+            else:
+                # Es un peer - INCLUIR CON InNetworkMap=true
+                # (La API REST siempre retorna dispositivos en la red, aunque no estén online)
+                json_data["Peer"][device.get("id", ip)] = {
+                    "HostName": device_name,
+                    "TailscaleIPs": [ip],
+                    "Online": device.get("online", False),
+                    "InMagicSock": device.get("online", False),
+                    "InNetworkMap": True,  # IMPORTANTE: todos están en la red por que la API los retorna
+                }
+                peer_count += 1
+                status = "🟢" if device.get("online") else "⚫"
+                log_msg(f"    {status} {device_name} ({ip})")
+        
+        # Escribir JSON
+        json_path = Path(home) / "Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json"
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(json_path, "w") as f:
+            json.dump(json_data, f, indent=2)
+        
+        log_msg(f"[✓] API REST: {peer_count} peers (incluidos offline)")
+        return True
+    except Exception as e:
+        log_msg(f"[!] Error API REST: {e}")
+        return False
 
 def check_tailscale_status():
     """Verifica si Tailscale está conectado y lógueado"""
@@ -224,7 +321,16 @@ def ensure_tailscale_daemon():
         log_msg(f"[!] Error iniciando tailscaled: {e}")
 
 def update_json_status():
-    """Actualiza el JSON de status para que lo lea el contenedor"""
+    """Actualiza el JSON de status para que lo lea el contenedor
+    PRIMERO intenta API REST (fuente de verdad en nube)
+    LUEGO fallback a tailscale status --json (local)
+    """
+    # Primero: intentar API REST (más confiable)
+    if update_json_from_api():
+        log_msg("[✓] JSON actualizado desde API REST (fuente en nube)")
+        return True
+    
+    # Fallback: tailscale status local
     try:
         home = os.path.expanduser("~")
         json_path = Path(home) / "Documents/prr/envioArchivos/templates/quic-file-transfer/app/tailscale_status.json"
@@ -240,9 +346,10 @@ def update_json_status():
             json_path.parent.mkdir(parents=True, exist_ok=True)
             with open(json_path, "w") as f:
                 f.write(result.stdout)
+            log_msg("[✓] JSON actualizado desde 'tailscale status' (local)")
             return True
     except Exception as e:
-        log_msg(f"[!] Error actualizando JSON: {e}")
+        log_msg(f"[!] Error actualizando JSON local: {e}")
     
     return False
 
@@ -263,26 +370,22 @@ def main():
     
     # Loop de monitoreo
     consecutive_errors = 0
-    check_interval = 20  # Reducir a 20 segundos para reaccionar más rápido
-    json_update_counter = 0  # Actualizar JSON cada 3 chequeos (60 seg)
+    check_interval = 20  # 20 segundos
     
     while True:
         try:
             status = check_tailscale_status()
             ip = get_tailscale_ip()
-            json_update_counter += 1
             
             if status == "connected":
-                # ✅ Está bien, solo actualizar JSON
+                # ✅ Está bien, actualizar JSON CADA 20 segundos
                 if consecutive_errors > 0:
                     log_msg(f"[✓] Reconexión exitosa. IP: {ip}")
                     consecutive_errors = 0
                 
-                # Actualizar JSON frecuentemente (cada 60 segundos)
-                # Importante para que el Android se vea apenas se conecta
-                if json_update_counter >= 3:
-                    update_json_status()
-                    json_update_counter = 0
+                # Actualizar JSON SIEMPRE (cada 20 segundos)
+                # Usa API REST (fuente de verdad en nube)
+                update_json_status()
             
             elif status == "logged_out":
                 log_msg(f"[⚠️] Tailscale está deslogueado")

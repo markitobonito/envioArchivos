@@ -51,15 +51,29 @@ if errorlevel 1 (
     
     echo.
     echo [*] Installing WSL feature...
-    powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart' -Verb RunAs -Wait" >>"%LOG_FILE%" 2>&1
+    echo [%date% %time%] Starting DISM for WSL >> "%LOG_FILE%"
+    
+    REM Execute DISM directly - no PowerShell wrapping
+    powershell -NoProfile -Command ^
+        "$p = Start-Process 'dism.exe' -ArgumentList '/online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart' -Verb RunAs -Wait -PassThru; ^
+        if ($p.ExitCode -ne 0) { Write-Host 'DISM WSL failed with exit code ' + $p.ExitCode } else { Write-Host 'DISM WSL succeeded' }"
     
     echo [*] Installing Virtual Machine Platform...
-    powershell -Command "Start-Process 'cmd' -ArgumentList '/c dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart' -Verb RunAs -Wait" >>"%LOG_FILE%" 2>&1
+    echo [%date% %time%] Starting DISM for Virtual Machine Platform >> "%LOG_FILE%"
     
+    REM Execute DISM directly - no PowerShell wrapping
+    powershell -NoProfile -Command ^
+        "$p = Start-Process 'dism.exe' -ArgumentList '/online /enable-feature /featurename:VirtualMachinePlatform /all /norestart' -Verb RunAs -Wait -PassThru; ^
+        if ($p.ExitCode -ne 0) { Write-Host 'DISM VirtualMachinePlatform failed with exit code ' + $p.ExitCode } else { Write-Host 'DISM VirtualMachinePlatform succeeded' }"
+    
+    echo.
+    echo [OK] WSL2 installation commands completed
+    echo [%date% %time%] DISM commands completed >> "%LOG_FILE%"
     echo.
     echo [*] Restarting in 10 seconds...
     echo [*] Press Ctrl+C to cancel
     timeout /t 10 /nobreak
+    echo [%date% %time%] Initiating restart >> "%LOG_FILE%"
     shutdown /r /t 0 /c "WSL2 installation complete. Restarting."
     exit /b 0
 )

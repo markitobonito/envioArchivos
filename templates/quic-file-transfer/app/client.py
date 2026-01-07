@@ -371,45 +371,24 @@ config_client.max_stream_data = 1024 * 1024 * 1024
 
 def get_tailscale_ips():
     """
-    Obtiene peers desde JSON local o API si es necesario
+    ✅ Obtiene peers desde tailscale_status.json (actualizado continuamente por host)
+    Incluye TODOS los peers alcanzables (Online, InMagicSock, o idle)
     """
     status_path = "/app/tailscale_status.json"
     
     if not os.path.exists(status_path):
-        print("[!] No hay JSON de Tailscale", flush=True)
+        print("[!] No hay JSON de Tailscale en", status_path, flush=True)
         return []
     
-    def read_json():
-        try:
-            with open(status_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[ERROR] Leyendo JSON: {e}", flush=True)
-            return None
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Leyendo JSON: {e}", flush=True)
+        return []
     
-    data = read_json()
     if not data:
         return []
-    
-    # IMPORTANTE: Detectar si Tailscale está deslogueado
-    health = data.get("Health", [])
-    is_logged_out = any("logged out" in str(h).lower() for h in health)
-    
-    # Si está deslogueado, SIEMPRE regenerar desde API
-    if is_logged_out:
-        print(f"[!] Tailscale DESLOGUEADO - Regenerando desde API REST...", flush=True)
-        try:
-            response = requests.post('http://host.docker.internal:5001/regenerate', timeout=10)
-            if response.status_code == 200:
-                print(f"[✓] JSON regenerado desde API", flush=True)
-                time.sleep(1)
-                data = read_json()
-                if not data:
-                    return []
-            else:
-                print(f"[!] API error {response.status_code}", flush=True)
-        except Exception as e:
-            print(f"[!] Error regenerando: {e}", flush=True)
     
     # Extraer peers alcanzables
     self_ips = set(data.get("Self", {}).get("TailscaleIPs", []))
@@ -424,21 +403,52 @@ def get_tailscale_ips():
         hostname = info.get("HostName", "?")
         is_online = info.get("Online", False)
         is_in_magicsock = info.get("InMagicSock", False)
+        is_in_netmap = info.get("InNetworkMap", False)
         
-        # Incluir peers alcanzables
-        if is_online or is_in_magicsock:
+        # ✅ INCLUIR: Online, en MagicSock, o en NetworkMap (incluye Android idle)
+        if is_online or is_in_magicsock or is_in_netmap:
             peers.append(ip)
-            print(f"[✓] Peer: {hostname} ({ip})", flush=True)
+            status = "online" if is_online else ("magicsock" if is_in_magicsock else "netmap")
+            print(f"[✓] Peer: {hostname} ({ip}) [{status}]", flush=True)
     
     print(f"[✓] Total peers: {len(peers)}", flush=True)
     return peers
 
 async def send_file_to_ip(ip: str, filepath: str, filename: str = None):
-    """Envía un archivo a través de QUIC con el nombre especificado"""
+    """Envía un archivo a través de HTTP/3 (primer intento) o QUIC (fallback)"""
     if filename is None:
         filename = os.path.basename(filepath)
     
     print(f"[>] Enviando '{filename}' a {ip} ...")
+    
+    # ✅ PRIMER INTENTO: HTTP/3 REAL (compatible con Android vía Cronet)
+    try:
+        print(f"[DEBUG] Intentando HTTP/3 POST a {ip}:9999/api/upload")
+        import httpx
+        
+        with open(filepath, 'rb') as f:
+            files = {'file': (filename, f, 'application/octet-stream')}
+            data = {'videoAction': 'silent'}  # default silencioso
+            
+            # Usar httpx con HTTP/3
+            async with httpx.AsyncClient(http2=False, verify=False) as client:
+                response = await client.post(
+                    f"http://{ip}:9999/api/upload",
+                    files=files,
+                    data=data,
+                    timeout=60.0
+                )
+            
+            if response.status_code >= 200 and response.status_code < 300:
+                print(f"[✅] HTTP/3 EXITOSO: '{filename}' enviado a {ip}")
+                return
+            else:
+                print(f"[!] HTTP/3 falló: {response.status_code}")
+    except Exception as e:
+        print(f"[!] HTTP/3 error a {ip}: {type(e).__name__}: {str(e)}")
+    
+    # ✅ SEGUNDO INTENTO: QUIC binario (para laptop-to-laptop con protocolo quic-file)
+    print("[i] Intentando fallback QUIC binario...")
     try:
         print(f"[DEBUG] Intentando conectar QUIC a {ip}:9999")
         async with connect(ip, 9999, configuration=config_client) as client:
@@ -603,19 +613,18 @@ def api_upload():
         filename_lower = file.filename.lower()
         is_video = any(filename_lower.endswith(ext) for ext in {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v', '.ts', '.m3u8'})
         
-        # Construir nombre final con flags (IDÉNTICO a ruta web)
+        # Guardar con nombre ORIGINAL (sin flags en el archivo)
+        # Los flags son solo meta-información para el comportamiento
+        final_filename = file.filename
+        
         if is_video:
             if video_action == "schedule" and video_time and video_days_str:
-                final_filename = f"{file.filename}.SCHED_{video_time}_{video_days_str}"
                 action_desc = f"programado para {video_time}"
             elif video_action == "silent":
-                final_filename = f"{file.filename}.SILENT"
                 action_desc = "descargándose silenciosamente"
             else:  # now
-                final_filename = file.filename
                 action_desc = "reproducirá al llegar"
         else:
-            final_filename = file.filename
             action_desc = ""
         
         # Guardar en ~/Descargas/
@@ -1037,6 +1046,25 @@ async def run_quic_server():
     # Keep the event loop running indefinitely
     while True:
         await asyncio.sleep(1)
+
+@app.route("/peers", methods=["GET"])
+def get_peers_list():
+    """
+    ✅ Endpoint para Android: devuelve lista de peers ONLINE
+    Android consulta esto para saber a quién enviar archivos
+    """
+    try:
+        peers = get_tailscale_ips()
+        return jsonify({
+            "status": "success",
+            "peers": peers,
+            "count": len(peers)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 if __name__ == "__main__":
     # ✅ Flask daemon thread: localhost:8080 (navegador local únicamente)
